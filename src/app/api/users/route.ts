@@ -6,6 +6,35 @@ function assertAdmin(req: NextRequest) {
   return req.headers.get("x-user-role") === "Admin"
 }
 
+const allowedRoles = new Set(["Admin", "Trustee", "Auditor", "Viewer"])
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item).trim()).filter(Boolean)
+    : []
+}
+
+function slugifyUsername(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+async function getUniqueUsername(preferredUsername: string, fallbackName: string) {
+  const base = slugifyUsername(preferredUsername || fallbackName) || "user"
+  let candidate = base
+  let suffix = 1
+
+  while (await User.exists({ username: candidate })) {
+    suffix += 1
+    candidate = `${base}-${suffix}`
+  }
+
+  return candidate
+}
+
 export async function GET(req: NextRequest) {
   try {
     await connectDB()
@@ -28,34 +57,54 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const username = String(body.username || "").trim().toLowerCase()
+    const requestedUsername = String(body.username || "").trim()
     const password = String(body.password || "").trim()
+    const name = String(body.name || "").trim()
+    const email = body.email ? String(body.email).trim().toLowerCase() : undefined
+    const role = String(body.role || "Viewer")
+    const status = body.status === "Inactive" ? "Inactive" : "Active"
 
-    if (!username || !password || !body.name || !body.role) {
+    if (!password || !name || !role) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const existing = await User.findOne({ username })
-    if (existing) {
-      return NextResponse.json({ error: "Username already exists" }, { status: 409 })
+    if (!allowedRoles.has(role)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 })
     }
+
+    const username = await getUniqueUsername(requestedUsername, name)
 
     const user = await User.create({
       username,
       password,
-      name: String(body.name).trim(),
-      email: body.email ? String(body.email).trim().toLowerCase() : undefined,
-      role: body.role,
-      groups: Array.isArray(body.groups) ? body.groups : [],
-      rights: Array.isArray(body.rights) ? body.rights : [],
-      status: body.status || "Active",
+      name,
+      email,
+      role,
+      groups: normalizeStringArray(body.groups),
+      rights: normalizeStringArray(body.rights),
+      status,
     })
 
     const userObject = user.toObject()
     delete userObject.password
 
     return NextResponse.json({ user: userObject }, { status: 201 })
-  } catch {
+  } catch (error) {
+    if (typeof error === "object" && error !== null) {
+      const maybeError = error as { code?: number; message?: string; errors?: Record<string, { message?: string }> }
+
+      if (maybeError.errors) {
+        const firstMessage = Object.values(maybeError.errors).find((item) => item?.message)?.message
+        if (firstMessage) {
+          return NextResponse.json({ error: firstMessage }, { status: 400 })
+        }
+      }
+
+      if (maybeError.message) {
+        return NextResponse.json({ error: maybeError.message }, { status: 500 })
+      }
+    }
+
     return NextResponse.json({ error: "Failed to create user" }, { status: 500 })
   }
 }

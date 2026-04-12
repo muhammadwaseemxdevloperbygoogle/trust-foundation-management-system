@@ -1,55 +1,14 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Building2, Users, DollarSign, Clock, Plus, FileText, MapPin } from "lucide-react"
 import { StatCard } from "@/components/stat-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useAuth, hasPermission } from "@/lib/auth-context"
+import { formatPKR } from "@/src/lib/waqf-utils"
 import Link from "next/link"
-
-const recentActivity = [
-  {
-    id: 1,
-    action: "Property Added",
-    description: "Al-Noor Mosque property registered",
-    user: "Ahmed Hassan",
-    time: "5 minutes ago",
-    type: "create",
-  },
-  {
-    id: 2,
-    action: "Document Uploaded",
-    description: "Deed document for Property #1023",
-    user: "Fatima Ali",
-    time: "1 hour ago",
-    type: "upload",
-  },
-  {
-    id: 3,
-    action: "Beneficiary Updated",
-    description: "Payment status changed for Omar Foundation",
-    user: "Sara Mohammed",
-    time: "2 hours ago",
-    type: "update",
-  },
-  {
-    id: 4,
-    action: "Report Generated",
-    description: "Q4 2024 Annual Report exported",
-    user: "Ahmed Hassan",
-    time: "3 hours ago",
-    type: "report",
-  },
-  {
-    id: 5,
-    action: "Property Edited",
-    description: "Valuation updated for Green Valley Land",
-    user: "Fatima Ali",
-    time: "5 hours ago",
-    type: "update",
-  },
-]
 
 const getActivityBadgeVariant = (type: string) => {
   switch (type) {
@@ -69,6 +28,87 @@ const getActivityBadgeVariant = (type: string) => {
 export default function DashboardPage() {
   const { user } = useAuth()
   const canCreate = hasPermission(user?.role, "create")
+  const [stats, setStats] = useState<{
+    totalDonors: number
+    activeDonors: number
+    inactiveDonors: number
+    currentMonthCollected: number
+    currentMonthPending: number
+    currentMonthTarget: number
+    yearToDateCollected: number
+    yearToDateExpenditure: number
+    yearToDateReceived: number
+    balance: number
+    recentPayments: Array<{
+      _id: string
+      paymentId: string
+      amount: number
+      paymentDate: string
+      method: string
+      donor?: { donorId?: string; name?: string } | string
+    }>
+    recentExpenditures: Array<{
+      _id: string
+      expenditureId: string
+      title: string
+      amount: number
+      date: string
+      category: string
+    }>
+  } | null>(null)
+  const [propertyCount, setPropertyCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        setLoading(true)
+        const [statsRes, propertiesRes] = await Promise.all([
+          fetch("/api/dashboard/stats"),
+          fetch("/api/properties"),
+        ])
+
+        const statsData = await statsRes.json()
+        const propertiesData = await propertiesRes.json()
+
+        if (!statsRes.ok) {
+          setError(statsData?.error || "Failed to load dashboard stats")
+        } else {
+          setStats(statsData)
+        }
+
+        if (propertiesRes.ok) {
+          setPropertyCount((propertiesData.properties || []).length)
+        }
+      } catch {
+        setError("Failed to load dashboard data")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadDashboard()
+  }, [])
+
+  const activityItems = [
+    ...(stats?.recentPayments || []).map((payment) => ({
+      id: payment._id,
+      action: "Payment Recorded",
+      description: `${typeof payment.donor === "string" ? payment.donor : payment.donor?.name || "Donor"} payment ${payment.paymentId}`,
+      user: payment.method,
+      time: new Date(payment.paymentDate).toLocaleString(),
+      type: "create",
+    })),
+    ...(stats?.recentExpenditures || []).map((expenditure) => ({
+      id: expenditure._id,
+      action: "Expenditure Recorded",
+      description: expenditure.title,
+      user: expenditure.category,
+      time: new Date(expenditure.date).toLocaleString(),
+      type: "update",
+    })),
+  ].slice(0, 5)
 
   return (
     <div className="space-y-6">
@@ -84,29 +124,27 @@ export default function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Properties"
-          value="156"
+          value={loading ? "..." : propertyCount}
           icon={Building2}
-          trend={{ value: 12, label: "vs last month" }}
         />
         <StatCard
-          title="Total Beneficiaries"
-          value="2,847"
+          title="Total Donors"
+          value={loading ? "..." : stats?.totalDonors ?? 0}
           icon={Users}
-          trend={{ value: 8, label: "vs last month" }}
         />
         <StatCard
           title="Monthly Income"
-          value="$847,250"
+          value={loading ? "..." : formatPKR(stats?.currentMonthCollected ?? 0)}
           icon={DollarSign}
-          trend={{ value: -3, label: "vs last month" }}
         />
         <StatCard
-          title="Pending Actions"
-          value="23"
+          title="Net Balance"
+          value={loading ? "..." : formatPKR(stats?.balance ?? 0)}
           icon={Clock}
-          trend={{ value: 0, label: "no change" }}
         />
       </div>
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       {/* Main content grid */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -128,9 +166,9 @@ export default function DashboardPage() {
                     </Link>
                   </Button>
                   <Button variant="outline" asChild>
-                    <Link href="/dashboard/beneficiaries">
+                    <Link href="/dashboard/donors">
                       <Users className="mr-2 h-4 w-4" />
-                      Add Beneficiary
+                      Manage Donors
                     </Link>
                   </Button>
                   <Button variant="outline" asChild>
@@ -155,8 +193,8 @@ export default function DashboardPage() {
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
                     <MapPin className="h-12 w-12 text-muted-foreground/50 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Interactive map placeholder</p>
-                    <p className="text-xs text-muted-foreground/70">156 properties across 12 regions</p>
+                    <p className="text-sm text-muted-foreground">Map data is not connected yet</p>
+                    <p className="text-xs text-muted-foreground/70">{propertyCount} properties currently loaded</p>
                   </div>
                 </div>
                 {/* Decorative grid pattern */}
@@ -179,11 +217,16 @@ export default function DashboardPage() {
         <Card className="lg:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Recent Activity</CardTitle>
-            <CardDescription>Latest actions in the system</CardDescription>
+            <CardDescription>Latest recorded payments and expenditures</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-border">
-              {recentActivity.map((activity) => (
+              {activityItems.length === 0 ? (
+                <div className="px-6 py-10 text-center text-sm text-muted-foreground">
+                  No activity recorded yet.
+                </div>
+              ) : (
+                activityItems.map((activity) => (
                 <div key={activity.id} className="px-6 py-3 hover:bg-muted/50 transition-colors">
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1 min-w-0">
@@ -200,7 +243,8 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                ))
+              )}
             </div>
             <div className="p-4 border-t border-border">
               <Button variant="ghost" className="w-full text-sm" size="sm">

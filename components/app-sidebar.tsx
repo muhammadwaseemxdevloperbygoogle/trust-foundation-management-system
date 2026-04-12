@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -11,6 +11,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  HandCoins,
+  Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -22,6 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useAppSettings } from "@/hooks/use-app-settings"
 
 const navigation = [
   {
@@ -37,9 +40,15 @@ const navigation = [
     permission: "view" as const,
   },
   {
-    name: "Beneficiaries",
-    href: "/dashboard/beneficiaries",
+    name: "Donors",
+    href: "/dashboard/donors",
     icon: Users,
+    permission: "view" as const,
+  },
+  {
+    name: "Expenditures",
+    href: "/dashboard/expenditures",
+    icon: HandCoins,
     permission: "view" as const,
   },
   {
@@ -55,12 +64,20 @@ const navigation = [
     permission: "view" as const,
     adminOnly: true,
   },
+  {
+    name: "Settings",
+    href: "/dashboard/settings",
+    icon: Settings,
+    permission: "view" as const,
+    adminOnly: true,
+  },
 ]
 
 export function AppSidebar() {
   const pathname = usePathname()
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
+  const { applicationName, trustName } = useAppSettings()
 
   const filteredNavigation = navigation.filter((item) => {
     if (item.adminOnly && user?.role !== "Admin") return false
@@ -75,23 +92,20 @@ export function AppSidebar() {
           collapsed ? "w-16" : "w-64"
         )}
       >
-        {/* Islamic pattern overlay */}
         <div className="absolute inset-0 islamic-pattern opacity-30 pointer-events-none" />
 
-        {/* Header */}
         <div className={cn("relative z-10 flex items-center gap-3 p-4 border-b border-sidebar-border", collapsed && "justify-center")}>
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold text-lg shrink-0">
-            W
+            {applicationName.charAt(0).toUpperCase()}
           </div>
           {!collapsed && (
-            <div className="flex flex-col">
-              <span className="font-semibold text-sm leading-tight">Waqf Trust</span>
-              <span className="text-xs text-sidebar-foreground/70">Foundation</span>
+            <div className="flex flex-col min-w-0">
+              <span className="font-semibold text-sm leading-tight truncate">{applicationName}</span>
+              <span className="text-xs text-sidebar-foreground/70 truncate">{trustName}</span>
             </div>
           )}
         </div>
 
-        {/* Navigation */}
         <nav className="relative z-10 flex-1 p-3 space-y-1">
           {filteredNavigation.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
@@ -128,7 +142,6 @@ export function AppSidebar() {
           })}
         </nav>
 
-        {/* User section & Logout */}
         <div className="relative z-10 p-3 border-t border-sidebar-border">
           {user && !collapsed && (
             <div className="flex items-center gap-3 px-3 py-2 mb-2">
@@ -141,7 +154,7 @@ export function AppSidebar() {
               </div>
             </div>
           )}
-          
+
           {collapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -170,7 +183,6 @@ export function AppSidebar() {
           )}
         </div>
 
-        {/* Collapse toggle */}
         <Button
           variant="ghost"
           size="icon"

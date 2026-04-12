@@ -13,54 +13,101 @@ import {
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
-import { Badge } from "@/components/ui/badge"
 
 const reportTypes = [
   {
-    id: "annual",
-    name: "Annual Report",
-    description: "Comprehensive yearly overview of all Waqf properties, income, and beneficiary distributions.",
-    icon: FileText,
-  },
-  {
-    id: "valuation",
-    name: "Property Valuation Report",
-    description: "Detailed valuation assessment of all registered Waqf properties.",
-    icon: FileText,
-  },
-  {
-    id: "beneficiary",
-    name: "Beneficiary Distribution Report",
-    description: "Summary of all disbursements made to beneficiaries during the selected period.",
-    icon: FileText,
-  },
-  {
-    id: "transaction",
-    name: "Transaction Summary Report",
-    description: "Complete listing of all financial transactions including income and expenses.",
+    id: "ledger",
+    name: "Donor Ledger Report",
+    description: "Month-by-month paid and pending status based on recorded donor payments.",
     icon: FileText,
   },
 ]
 
-const recentReports = [
-  { id: 1, name: "Annual Report 2024", type: "Annual Report", generatedAt: "2024-12-01", format: "PDF", size: "2.4 MB" },
-  { id: 2, name: "Q3 Beneficiary Distribution", type: "Beneficiary Distribution", generatedAt: "2024-10-15", format: "Excel", size: "1.2 MB" },
-  { id: 3, name: "Property Valuation Oct 2024", type: "Property Valuation", generatedAt: "2024-10-01", format: "PDF", size: "3.8 MB" },
-  { id: 4, name: "H1 Transaction Summary", type: "Transaction Summary", generatedAt: "2024-07-01", format: "CSV", size: "856 KB" },
-]
+function toCsv(rows: Array<{ donorId: string; donorName: string; year: number; month: number; status: string; amount: number }>) {
+  const header = "donorId,donorName,year,month,status,amount"
+  const body = rows.map((row) => {
+    const donorName = `"${row.donorName.replace(/"/g, '""')}"`
+    return [row.donorId, donorName, row.year, row.month, row.status, row.amount].join(",")
+  })
+  return [header, ...body].join("\n")
+}
+
+function downloadFile(content: string, fileName: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
 
 export default function ReportsPage() {
   const [selectedReport, setSelectedReport] = useState<string>("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const [lastGeneratedAt, setLastGeneratedAt] = useState<string>("")
+  const [lastRowCount, setLastRowCount] = useState(0)
 
   const handleGenerate = async (format: string) => {
+    if (!selectedReport) {
+      setError("Please select a report type")
+      return
+    }
+
+    setError("")
+    setSuccess("")
     setIsGenerating(true)
-    // Simulate report generation
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    setIsGenerating(false)
-    console.log("[v0] Generating report:", { type: selectedReport, format, startDate, endDate })
+
+    try {
+      const effectiveYear = startDate ? Number(startDate.slice(0, 4)) : new Date().getFullYear()
+      const res = await fetch(`/api/reports/ledger?year=${effectiveYear}`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data?.error || "Failed to generate report")
+        return
+      }
+
+      const flatRows: Array<{ donorId: string; donorName: string; year: number; month: number; status: string; amount: number }> = []
+      for (const donorReport of data.report || []) {
+        const donorId = donorReport?.donor?.donorId || ""
+        const donorName = donorReport?.donor?.name || ""
+        for (const monthRow of donorReport?.months || []) {
+          flatRows.push({
+            donorId,
+            donorName,
+            year: donorReport.year,
+            month: monthRow.month,
+            status: monthRow.status,
+            amount: monthRow.amount,
+          })
+        }
+      }
+
+      setLastRowCount(flatRows.length)
+      setLastGeneratedAt(new Date().toLocaleString())
+
+      if (format === "csv" || format === "excel") {
+        const csv = toCsv(flatRows)
+        downloadFile(csv, `ledger-${effectiveYear}.csv`, "text/csv;charset=utf-8")
+        setSuccess(`Generated ${flatRows.length} rows and downloaded CSV file.`)
+        return
+      }
+
+      if (format === "pdf") {
+        setSuccess(`Report generated with ${flatRows.length} rows. PDF export is not connected yet.`)
+      }
+    } catch {
+      setError("Failed to generate report")
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -80,6 +127,8 @@ export default function ReportsPage() {
           <CardDescription>Select a report type and date range to generate</CardDescription>
         </CardHeader>
         <CardContent>
+          {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
+          {success ? <p className="mb-3 text-sm text-primary">{success}</p> : null}
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="report-type">Report Type</FieldLabel>
@@ -198,40 +247,20 @@ export default function ReportsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Recently Generated Reports</CardTitle>
-          <CardDescription>Download previously generated reports</CardDescription>
+          <CardDescription>Latest generated report metadata.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {recentReports.map((report) => (
-              <div
-                key={report.id}
-                className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{report.name}</p>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span>{report.type}</span>
-                      <span>•</span>
-                      <span>{report.generatedAt}</span>
-                      <span>•</span>
-                      <span>{report.size}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline">{report.format}</Badge>
-                  <Button variant="ghost" size="icon">
-                    <Download className="h-4 w-4" />
-                    <span className="sr-only">Download</span>
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+          {lastGeneratedAt ? (
+            <div className="rounded-lg border border-border p-4">
+              <p className="font-medium">Last generated: {lastGeneratedAt}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Rows included: {lastRowCount}</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center">
+              <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
+              <p className="mt-3 font-medium">No generated reports yet</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

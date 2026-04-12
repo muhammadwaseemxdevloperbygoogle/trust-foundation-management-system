@@ -8,19 +8,16 @@ This application is a comprehensive record management system designed for Waqf T
 
 ## Getting Started
 
-### Demo Credentials
+### Credentials
 
-| Role     | Email                | Password   | Access Level |
-|----------|----------------------|------------|--------------|
-| Admin    | admin@waqf.org       | admin123   | Full access to all features |
-| Trustee  | trustee@waqf.org     | trustee123 | Property and beneficiary management |
-| Auditor  | auditor@waqf.org     | auditor123 | Read-only access with audit logs |
-| Viewer   | viewer@waqf.org      | viewer123  | Read-only access |
+- This system does not ship with demo users.
+- Users are authenticated against database records.
+- Initial admin seeding only happens when environment credentials are provided.
 
 ### Login
 
 1. Navigate to the login page (root URL)
-2. Enter your email and password
+2. Enter your username and password
 3. Click "Sign In" to access the dashboard
 
 ---
@@ -30,18 +27,18 @@ This application is a comprehensive record management system designed for Waqf T
 The main dashboard provides an overview of:
 
 - **Total Properties** - Count of all Waqf properties in the system
-- **Active Beneficiaries** - Number of beneficiaries currently receiving support
-- **Monthly Revenue** - Total income from all properties this month
+- **Total Donors** - Number of registered donors
+- **Monthly Income** - Total donations collected in the current month
 - **Pending Actions** - Tasks requiring attention
 
 ### Quick Actions (Admin/Trustee only)
 - Add New Property
-- Register Beneficiary
+- Manage Donors
 - Record Transaction
 - Generate Report
 
 ### Recent Activity
-View the latest actions performed in the system including property additions, beneficiary registrations, and transactions.
+View the latest actions performed in the system including payments and expenditures.
 
 ---
 
@@ -94,27 +91,27 @@ Click on any property row to view detailed information:
 
 ---
 
-## Beneficiaries Management
+## Donors Management
 
-### Viewing Beneficiaries
-Navigate to **Beneficiaries** in the sidebar.
+### Viewing Donors
+Navigate to **Donors** in the sidebar.
 
 **Features:**
 - Search by name, ID, or contact
 - Filter by status (Active, Inactive, Pending)
 - View allocation details
 
-### Beneficiary Information
-Each beneficiary record includes:
-- Personal information (name, contact, address)
-- Linked properties and share percentages
+### Donor Information
+Each donor record includes:
+- Personal information (name, contact, city)
+- Monthly amount
+- Status (active/inactive)
 - Payment history
-- Registration date
 
-### Adding a Beneficiary (Admin/Trustee only)
-1. Click "Add Beneficiary" button
-2. Fill in personal details
-3. Assign properties and share percentages
+### Adding a Donor (Admin/Trustee only)
+1. Click "Add Donor" button
+2. Fill in donor details
+3. Set monthly amount
 4. Submit registration
 
 ---
@@ -129,7 +126,7 @@ Navigate to **Reports** to generate various reports.
 |--------|-------------|
 | Property Summary | Overview of all properties with valuations |
 | Financial Statement | Income and expenses breakdown |
-| Beneficiary Distribution | Allocation details per beneficiary |
+| Donor Ledger | Month-wise paid and pending donor contributions |
 | Transaction History | Detailed transaction records |
 | Audit Report | System activity and changes |
 | Annual Report | Comprehensive yearly summary |
@@ -158,9 +155,9 @@ Navigate to **User Management** to manage system users.
 | Role | Permissions |
 |------|-------------|
 | Admin | Full system access, user management, all CRUD operations |
-| Trustee | Property and beneficiary management, transactions, reports |
+| Trustee | Property and donor management, transactions, reports |
 | Auditor | Read-only access to all data, audit logs, reports |
-| Viewer | Read-only access to properties and beneficiaries |
+| Viewer | Read-only access to properties and donors |
 
 ### Inviting New Users
 1. Click "Invite User" button
@@ -175,7 +172,7 @@ Navigate to **User Management** to manage system users.
 ### Sidebar Menu
 - **Dashboard** - Main overview
 - **Properties** - Property management
-- **Beneficiaries** - Beneficiary records
+- **Donors** - Donor records
 - **Reports** - Report generation
 - **User Management** - Admin user controls (Admin only)
 

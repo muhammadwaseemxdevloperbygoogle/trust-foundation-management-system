@@ -31,11 +31,11 @@ const propertySchema = new Schema<PropertyDocument>(
   { timestamps: true }
 )
 
-propertySchema.pre("validate", async function preValidate(next) {
-  if (this.propertyId) return next()
-  const count = await Property.countDocuments()
+propertySchema.pre("validate", async function preValidate() {
+  if (this.propertyId) return
+  const PropertyModel = this.model("Property")
+  const count = await PropertyModel.countDocuments()
   this.propertyId = `WTF-PRP-${String(count + 1).padStart(3, "0")}`
-  next()
 })
 
 export const Property = models.Property || model<PropertyDocument>("Property", propertySchema)

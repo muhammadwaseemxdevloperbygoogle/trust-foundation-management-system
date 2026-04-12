@@ -44,12 +44,27 @@ export async function GET() {
           },
         },
       },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
+      {
+        $group: {
+          _id: null,
+          totalPaid: {
+            $sum: {
+              $cond: [{ $eq: [{ $ifNull: ["$mode", "pay"] }, "pay"] }, "$amount", 0],
+            },
+          },
+          totalReceived: {
+            $sum: {
+              $cond: [{ $eq: [{ $ifNull: ["$mode", "pay"] }, "received"] }, "$amount", 0],
+            },
+          },
+        },
+      },
     ])
 
     const yearToDateCollected = ytdCollectedAgg[0]?.total || 0
-    const yearToDateExpenditure = ytdExpenditureAgg[0]?.total || 0
-    const balance = yearToDateCollected - yearToDateExpenditure
+    const yearToDateExpenditure = ytdExpenditureAgg[0]?.totalPaid || 0
+    const yearToDateReceived = ytdExpenditureAgg[0]?.totalReceived || 0
+    const balance = yearToDateCollected - yearToDateExpenditure + yearToDateReceived
 
     const recentExpenditures = await Expenditure.find().sort({ date: -1 }).limit(5).lean()
 
@@ -80,14 +95,30 @@ export async function GET() {
                 },
               },
             },
-            { $group: { _id: null, total: { $sum: "$amount" } } },
+            {
+              $group: {
+                _id: null,
+                totalPaid: {
+                  $sum: {
+                    $cond: [{ $eq: [{ $ifNull: ["$mode", "pay"] }, "pay"] }, "$amount", 0],
+                  },
+                },
+                totalReceived: {
+                  $sum: {
+                    $cond: [{ $eq: [{ $ifNull: ["$mode", "pay"] }, "received"] }, "$amount", 0],
+                  },
+                },
+              },
+            },
           ]),
         ])
 
         return {
           month: item.monthLabel,
           collected: collectedAgg[0]?.total || 0,
-          expenditure: expAgg[0]?.total || 0,
+          expenditure: expAgg[0]?.totalPaid || 0,
+          received: expAgg[0]?.totalReceived || 0,
+          net: (expAgg[0]?.totalReceived || 0) - (expAgg[0]?.totalPaid || 0),
         }
       })
     )
@@ -102,6 +133,7 @@ export async function GET() {
       collectionRate,
       yearToDateCollected,
       yearToDateExpenditure,
+      yearToDateReceived,
       balance,
       recentPayments: currentMonthPayments.slice(0, 10),
       recentExpenditures,

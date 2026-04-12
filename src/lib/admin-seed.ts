@@ -11,8 +11,23 @@ export async function ensureAdminUserExists() {
     return
   }
 
-  const envUsername = (process.env.USER_NAME || process.env.USERNAME || "admin").trim().toLowerCase()
-  const envPassword = (process.env.PASSOWARD || process.env.PASSWORD || "admin123").trim()
+  const rawUsername =
+    process.env.APP_ADMIN_USERNAME ||
+    process.env.USER_NAME ||
+    process.env.USERNAME ||
+    ""
+  const rawPassword =
+    process.env.APP_ADMIN_PASSWORD ||
+    process.env.PASSOWARD ||
+    process.env.PASSWORD ||
+    ""
+  const envUsername = rawUsername.trim().toLowerCase()
+  const envPassword = rawPassword.trim()
+
+  if (!envUsername || !envPassword) {
+    adminSeedChecked = true
+    return
+  }
 
   await User.create({
     username: envUsername,

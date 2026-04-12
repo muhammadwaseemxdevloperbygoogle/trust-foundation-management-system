@@ -133,8 +133,14 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
+  body,
+  #__next {
+    min-height: 100dvh;
+    width: 100%;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-x-hidden;
   }
 }
 

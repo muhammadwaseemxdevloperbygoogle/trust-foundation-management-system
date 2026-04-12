@@ -70,6 +70,19 @@ export default function UserManagementPage() {
     rights: "",
   })
 
+  useEffect(() => {
+    if (inviteData.username.trim()) return
+    const generated = inviteData.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+
+    if (!generated) return
+
+    setInviteData((prev) => (prev.username.trim() ? prev : { ...prev, username: generated }))
+  }, [inviteData.name])
+
   const authHeaders = useMemo(() => ({ "x-user-role": user?.role || "" }), [user?.role])
 
   const loadUsers = async () => {
@@ -301,7 +314,7 @@ export default function UserManagementPage() {
           <form onSubmit={handleInvite}>
             <FieldGroup>
               <Field><FieldLabel htmlFor="invite-name">Full Name</FieldLabel><Input id="invite-name" value={inviteData.name} onChange={(e) => setInviteData({ ...inviteData, name: e.target.value })} required /></Field>
-              <Field><FieldLabel htmlFor="invite-username">Username</FieldLabel><Input id="invite-username" value={inviteData.username} onChange={(e) => setInviteData({ ...inviteData, username: e.target.value })} required /></Field>
+              <Field><FieldLabel htmlFor="invite-username">Username</FieldLabel><Input id="invite-username" value={inviteData.username} onChange={(e) => setInviteData({ ...inviteData, username: e.target.value })} placeholder="Leave blank to auto-generate from name" /></Field>
               <Field><FieldLabel htmlFor="invite-password">Password</FieldLabel><Input id="invite-password" type="password" value={inviteData.password} onChange={(e) => setInviteData({ ...inviteData, password: e.target.value })} required /></Field>
               <Field><FieldLabel htmlFor="invite-email">Email Address</FieldLabel><Input id="invite-email" type="email" value={inviteData.email} onChange={(e) => setInviteData({ ...inviteData, email: e.target.value })} /></Field>
               <Field>

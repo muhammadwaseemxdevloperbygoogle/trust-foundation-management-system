@@ -40,11 +40,4 @@ const donorSchema = new Schema<DonorDocument>(
   { timestamps: true }
 )
 
-donorSchema.pre("validate", async function preValidate(next) {
-  if (this.donorId) return next()
-  const count = await Donor.countDocuments()
-  this.donorId = `WTF-DNR-${String(count + 1).padStart(3, "0")}`
-  next()
-})
-
 export const Donor = models.Donor || model<DonorDocument>("Donor", donorSchema)

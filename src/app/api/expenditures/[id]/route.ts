@@ -18,6 +18,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         $set: {
           title: body.title,
           category: body.category,
+          mode: body.mode === "received" ? "received" : "pay",
           amount: Number(body.amount),
           date: body.date,
           description: body.description,

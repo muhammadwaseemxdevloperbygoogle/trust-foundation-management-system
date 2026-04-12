@@ -13,12 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/lib/auth-context"
 import { useState, useEffect } from "react"
-
-const mockNotifications = [
-  { id: 1, title: "New property added", description: "Al-Noor Mosque property has been registered", time: "5m ago" },
-  { id: 2, title: "Document uploaded", description: "Deed document for Property #1023 uploaded", time: "1h ago" },
-  { id: 3, title: "Beneficiary update", description: "Payment status updated for 3 beneficiaries", time: "2h ago" },
-]
+import { useAppSettings } from "@/hooks/use-app-settings"
 
 interface TopNavbarProps {
   onMenuClick?: () => void
@@ -26,6 +21,7 @@ interface TopNavbarProps {
 
 export function TopNavbar({ onMenuClick }: TopNavbarProps) {
   const { user } = useAuth()
+  const { applicationName } = useAppSettings()
   const [isDark, setIsDark] = useState(false)
 
   useEffect(() => {
@@ -52,8 +48,8 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 lg:px-6">
-      <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-3 sm:px-4 lg:px-6">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-4">
         <Button
           variant="ghost"
           size="icon"
@@ -63,12 +59,12 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
           <Menu className="h-5 w-5" />
           <span className="sr-only">Toggle menu</span>
         </Button>
-        <h1 className="text-lg font-semibold text-card-foreground hidden sm:block">
-          Record Management System
+        <h1 className="max-w-[42vw] truncate text-sm font-semibold text-card-foreground sm:max-w-none sm:text-lg">
+          {applicationName}
         </h1>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         {/* Dark mode toggle */}
         <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
           {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -81,7 +77,7 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
               <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-accent-foreground text-[10px] font-bold">
-                3
+                0
               </span>
               <span className="sr-only">Notifications</span>
             </Button>
@@ -89,16 +85,9 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel>Notifications</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {mockNotifications.map((notification) => (
-              <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 p-3">
-                <span className="font-medium text-sm">{notification.title}</span>
-                <span className="text-xs text-muted-foreground">{notification.description}</span>
-                <span className="text-xs text-muted-foreground/70">{notification.time}</span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="justify-center text-primary font-medium">
-              View all notifications
+            <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 cursor-default" disabled>
+              <span className="font-medium text-sm">No notifications</span>
+              <span className="text-xs text-muted-foreground">Notifications will appear here when the system emits them.</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

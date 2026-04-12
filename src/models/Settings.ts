@@ -1,6 +1,7 @@
 import { Schema, model, models } from "mongoose"
 
 export interface SettingsDocument {
+  applicationName: string
   trustName: string
   tagline?: string
   phone?: string
@@ -19,6 +20,7 @@ export interface SettingsDocument {
 
 const settingsSchema = new Schema<SettingsDocument>(
   {
+    applicationName: { type: String, default: "WASI TRUST MANGMENT SYSTEM", trim: true },
     trustName: { type: String, default: "Al-Khair Waqf Trust", trim: true },
     tagline: { type: String, trim: true },
     phone: { type: String, trim: true },

@@ -10,8 +10,10 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status")
     const search = searchParams.get("search")
     const page = Number(searchParams.get("page") || 1)
-    const limit = Number(searchParams.get("limit") || 10)
-    const skip = (page - 1) * limit
+    const requestedLimit = Number(searchParams.get("limit") || 10)
+    const unlimited = !Number.isFinite(requestedLimit) || requestedLimit <= 0
+    const limit = unlimited ? 0 : requestedLimit
+    const skip = unlimited ? 0 : (page - 1) * limit
 
     const filter: Record<string, unknown> = {}
 
@@ -27,8 +29,13 @@ export async function GET(req: NextRequest) {
       ]
     }
 
+    const donorQuery = Donor.find(filter).sort({ createdAt: -1 })
+    if (!unlimited) {
+      donorQuery.skip(skip).limit(limit)
+    }
+
     const [donors, total, totalActive, totalInactive] = await Promise.all([
-      Donor.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      donorQuery.lean(),
       Donor.countDocuments(filter),
       Donor.countDocuments({ status: "active" }),
       Donor.countDocuments({ status: "inactive" }),
@@ -82,7 +89,7 @@ export async function GET(req: NextRequest) {
       totalCollected: totalCollectedAgg[0]?.amount || 0,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: unlimited ? 1 : Math.ceil(total / limit),
     })
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch donors" }, { status: 500 })
@@ -94,7 +101,19 @@ export async function POST(req: NextRequest) {
     await connectDB()
     const body = await req.json()
 
+    if (!body?.name?.trim()) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 })
+    }
+
+    if (!body?.phone?.trim()) {
+      return NextResponse.json({ error: "Phone number is required" }, { status: 400 })
+    }
+
+    const donorCount = await Donor.countDocuments()
+    const donorId = `WTF-DNR-${String(donorCount + 1).padStart(3, "0")}`
+
     const donor = await Donor.create({
+      donorId,
       name: body.name,
       phone: body.phone,
       cnic: body.cnic,
@@ -109,6 +128,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ donor }, { status: 201 })
   } catch (error) {
+    if (error instanceof Error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
     return NextResponse.json({ error: "Failed to create donor" }, { status: 500 })
   }
 }

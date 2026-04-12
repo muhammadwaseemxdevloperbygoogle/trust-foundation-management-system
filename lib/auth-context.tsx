@@ -47,24 +47,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (username: string, password: string): Promise<boolean> => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    })
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      })
 
-    if (!res.ok) {
+      if (!res.ok) {
+        return false
+      }
+
+      const data = await res.json()
+      if (!data?.user) {
+        return false
+      }
+
+      setUser(data.user)
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user))
+      return true
+    } catch {
       return false
     }
-
-    const data = await res.json()
-    if (!data?.user) {
-      return false
-    }
-
-    setUser(data.user)
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data.user))
-    return true
   }, [])
 
   const logout = useCallback(() => {
@@ -101,7 +105,7 @@ export function hasPermission(role: UserRole | undefined, action: "create" | "ed
   
   const permissions: Record<UserRole, string[]> = {
     Admin: ["create", "edit", "delete", "view"],
-    Trustee: ["create", "edit", "view"],
+    Trustee: ["create", "edit", "delete", "view"],
     Auditor: ["view"],
     Viewer: ["view"],
   }

@@ -8,8 +8,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Waqf Trust Foundation - Record Management System',
-  description: 'Professional record management system for Waqf Trust Foundation properties and beneficiaries',
+  title: 'WASI TRUST MANGMENT SYSTEM',
+  description: 'Multi-trust record management software with configurable branding from settings',
   generator: 'v0.app',
   icons: {
     icon: [

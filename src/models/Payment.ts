@@ -35,11 +35,10 @@ const paymentSchema = new Schema<PaymentDocument>(
   { timestamps: true }
 )
 
-paymentSchema.pre("validate", function preValidate(next) {
+paymentSchema.pre("validate", function preValidate() {
   if (!this.paymentId) {
     this.paymentId = `WTF-PAY-${Date.now()}`
   }
-  next()
 })
 
 paymentSchema.index({ donor: 1, month: 1, year: 1 }, { unique: true })

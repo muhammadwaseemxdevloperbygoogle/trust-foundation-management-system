@@ -7,7 +7,8 @@ async function getOrCreateSettings() {
   if (existing) return existing
 
   const created = await Settings.create({
-    trustName: "Al-Khair Waqf Trust",
+    applicationName: "WASI TRUST MANGMENT SYSTEM",
+    trustName: "WASI TRUST MANGMENT SYSTEM",
     ownerName: "Muhammad Hassan",
     monthlyTarget: 1000,
   })
@@ -35,6 +36,7 @@ export async function PUT(req: NextRequest) {
       current._id,
       {
         $set: {
+          applicationName: body.applicationName,
           trustName: body.trustName,
           tagline: body.tagline,
           phone: body.phone,

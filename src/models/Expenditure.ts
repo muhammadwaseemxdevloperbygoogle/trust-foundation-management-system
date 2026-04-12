@@ -4,6 +4,7 @@ export interface ExpenditureDocument {
   expenditureId: string
   title: string
   category: "operations" | "charity" | "maintenance" | "salaries" | "events" | "other"
+  mode: "pay" | "received"
   amount: number
   date: Date
   description?: string
@@ -23,6 +24,12 @@ const expenditureSchema = new Schema<ExpenditureDocument>(
       default: "other",
       index: true,
     },
+    mode: {
+      type: String,
+      enum: ["pay", "received"],
+      default: "pay",
+      index: true,
+    },
     amount: { type: Number, required: true, min: 1 },
     date: { type: Date, required: true, index: true },
     description: { type: String, trim: true },
@@ -32,11 +39,10 @@ const expenditureSchema = new Schema<ExpenditureDocument>(
   { timestamps: true }
 )
 
-expenditureSchema.pre("validate", function preValidate(next) {
+expenditureSchema.pre("validate", function preValidate() {
   if (!this.expenditureId) {
-    this.expenditureId = `WTF-EXP-${Date.now()}`
+    this.expenditureId = `WTF-EXP-${Date.now()}-${Math.floor(Math.random() * 100000)}`
   }
-  next()
 })
 
 export const Expenditure =
