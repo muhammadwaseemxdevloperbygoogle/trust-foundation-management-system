@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   Building2,
@@ -75,6 +76,7 @@ const navigation = [
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const { applicationName, trustName } = useAppSettings()
@@ -83,6 +85,11 @@ export function AppSidebar() {
     if (item.adminOnly && user?.role !== "Admin") return false
     return hasPermission(user?.role, item.permission)
   })
+
+  const handleSignOut = () => {
+    logout()
+    router.push("/sign-in")
+  }
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -161,7 +168,7 @@ export function AppSidebar() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={logout}
+                  onClick={handleSignOut}
                   className="w-full text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                 >
                   <LogOut className="h-5 w-5" />
@@ -174,7 +181,7 @@ export function AppSidebar() {
           ) : (
             <Button
               variant="ghost"
-              onClick={logout}
+              onClick={handleSignOut}
               className="w-full justify-start gap-3 px-3 text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
             >
               <LogOut className="h-5 w-5" />
