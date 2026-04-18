@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/lib/auth-context"
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useAppSettings } from "@/hooks/use-app-settings"
 
 interface TopNavbarProps {
@@ -20,7 +21,8 @@ interface TopNavbarProps {
 }
 
 export function TopNavbar({ onMenuClick }: TopNavbarProps) {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const router = useRouter()
   const { applicationName } = useAppSettings()
   const [isDark, setIsDark] = useState(false)
 
@@ -32,6 +34,11 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
   const toggleDarkMode = () => {
     document.documentElement.classList.toggle("dark")
     setIsDark(!isDark)
+  }
+
+  const handleSignOut = () => {
+    logout()
+    router.push("/sign-in")
   }
 
   const getRoleBadgeVariant = (role: string) => {
@@ -53,7 +60,7 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="lg:hidden"
+          className="md:hidden"
           onClick={onMenuClick}
         >
           <Menu className="h-5 w-5" />
@@ -114,7 +121,7 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
               <DropdownMenuItem>Profile</DropdownMenuItem>
               <DropdownMenuItem>Settings</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">Sign out</DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive" onClick={handleSignOut}>Sign out</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}

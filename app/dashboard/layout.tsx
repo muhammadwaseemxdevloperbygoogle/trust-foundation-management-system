@@ -17,7 +17,7 @@ export default function DashboardLayout({
     <AuthProvider>
       <div className="flex min-h-dvh w-full overflow-x-hidden bg-background">
         {/* Desktop sidebar */}
-        <div className="hidden lg:flex">
+        <div className="hidden md:flex">
           <AppSidebar />
         </div>
 
