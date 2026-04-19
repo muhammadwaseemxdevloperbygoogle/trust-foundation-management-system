@@ -21,18 +21,55 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Donor not found" }, { status: 404 })
     }
 
-    const payments = await Payment.find({ donor: donor._id, year, status: "paid" }).lean()
+    const allPaidPayments = await Payment.find({ donor: donor._id, status: "paid" })
+      .sort({ year: 1, month: 1 })
+      .lean()
+
+    const payments = allPaidPayments.filter((p) => p.year === year)
 
     const paymentMap = new Map(
       payments.map((p) => [
         p.month,
-        { amount: p.amount, paymentDate: p.paymentDate, paymentId: p.paymentId },
+        {
+          recordId: String(p._id),
+          amount: p.amount,
+          paymentDate: p.paymentDate,
+          paymentId: p.paymentId,
+          method: p.method,
+          notes: p.notes,
+          receivedBy: p.receivedBy,
+        },
       ])
     )
 
-    const ledger = Array.from({ length: 12 }, (_, i) =>
-      monthStatusForYear(i + 1, year, paymentMap, donor.monthlyAmount)
-    )
+    // Carry-forward model: previous paid amounts become the opening of the new year.
+    const openingBalanceAtYearStart = allPaidPayments
+      .filter((p) => p.year < year)
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0)
+
+    let runningBalance = openingBalanceAtYearStart
+    const ledger = Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1
+      const baseRow = monthStatusForYear(month, year, paymentMap, donor.monthlyAmount)
+      const payment = paymentMap.get(month)
+      const paidAmount = Number(payment?.amount || 0)
+      const expectedAmount = Number(donor.monthlyAmount || 0)
+      const openingBalance = runningBalance
+      const closingBalance = openingBalance + paidAmount
+      runningBalance = closingBalance
+
+      return {
+        ...baseRow,
+        expectedAmount,
+        paidAmount,
+        openingBalance,
+        closingBalance,
+        paymentRecordId: payment?.recordId || null,
+        method: payment?.method || null,
+        notes: payment?.notes || null,
+        receivedBy: payment?.receivedBy || null,
+      }
+    })
 
     const totalReceived = ledger
       .filter((item) => item.status === "paid")
@@ -47,6 +84,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ledger,
       payments,
       summary: {
+        openingBalance: openingBalanceAtYearStart,
+        closingBalance: runningBalance,
         totalReceived,
         totalPending,
       },

@@ -4,6 +4,24 @@ import { AuditLog, Donor, Payment } from "@/src/models"
 
 const ALLOWED_METHODS = new Set(["cash", "bank_transfer", "easypaisa", "jazzcash"])
 
+function duplicatePaymentErrorMessage(error: { keyPattern?: Record<string, unknown>; keyValue?: Record<string, unknown> }) {
+  const patternKeys = Object.keys(error.keyPattern || {})
+
+  if (patternKeys.includes("donor") && patternKeys.includes("month") && patternKeys.includes("year")) {
+    return "Payment already exists for donor in selected month and year"
+  }
+
+  if (patternKeys.includes("paymentNo")) {
+    return "Payment number conflict detected. Please retry saving the entry"
+  }
+
+  if (patternKeys.includes("paymentId")) {
+    return "Payment ID conflict detected. Please retry saving the entry"
+  }
+
+  return "A duplicate payment record already exists"
+}
+
 export async function GET(req: NextRequest) {
   try {
     await connectDB()
@@ -90,6 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     const payment = await Payment.create({
+      paymentNo: `WTF-PNO-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
       donor: donorId,
       amount,
       month,
@@ -111,11 +130,17 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ payment }, { status: 201 })
   } catch (error: unknown) {
-    const knownError = error as { name?: string; code?: number; message?: string }
+    const knownError = error as {
+      name?: string
+      code?: number
+      message?: string
+      keyPattern?: Record<string, unknown>
+      keyValue?: Record<string, unknown>
+    }
 
     if (knownError?.code === 11000) {
       return NextResponse.json(
-        { error: "Payment already exists for donor in selected month and year" },
+        { error: duplicatePaymentErrorMessage(knownError) },
         { status: 400 }
       )
     }

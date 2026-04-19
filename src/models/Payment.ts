@@ -1,6 +1,7 @@
 import { Schema, model, models, Types } from "mongoose"
 
 export interface PaymentDocument {
+  paymentNo?: string
   paymentId: string
   donor: Types.ObjectId
   amount: number
@@ -17,6 +18,7 @@ export interface PaymentDocument {
 
 const paymentSchema = new Schema<PaymentDocument>(
   {
+    paymentNo: { type: String, index: true, sparse: true, trim: true },
     paymentId: { type: String, unique: true, index: true },
     donor: { type: Schema.Types.ObjectId, ref: "Donor", required: true, index: true },
     amount: { type: Number, default: 1000, min: 1 },
@@ -36,8 +38,12 @@ const paymentSchema = new Schema<PaymentDocument>(
 )
 
 paymentSchema.pre("validate", function preValidate() {
+  if (!this.paymentNo) {
+    this.paymentNo = `WTF-PNO-${Date.now()}-${Math.floor(Math.random() * 100000)}`
+  }
+
   if (!this.paymentId) {
-    this.paymentId = `WTF-PAY-${Date.now()}`
+    this.paymentId = `WTF-PAY-${Date.now()}-${Math.floor(Math.random() * 100000)}`
   }
 })
 
