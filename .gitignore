@@ -10,6 +10,12 @@ next.user-config.*
 # Environment variables
 .env*.local
 
+# Local utility/import scripts
+scripts/
+
+# Legacy donor import file
+walfair foundation  imtiaz -  ویلفیئر فاؤنڈیشن ڈمیاں .csv
+
 # Common ignores
 node_modules
 .next/

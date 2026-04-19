@@ -38,6 +38,8 @@ export default function DashboardPage() {
     yearToDateCollected: number
     yearToDateExpenditure: number
     yearToDateReceived: number
+    openingBalanceCurrentMonth: number
+    closingBalanceCurrentMonth: number
     balance: number
     recentPayments: Array<{
       _id: string
@@ -121,7 +123,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           title="Total Properties"
           value={loading ? "..." : propertyCount}
@@ -138,8 +140,18 @@ export default function DashboardPage() {
           icon={DollarSign}
         />
         <StatCard
+          title="Opening Balance"
+          value={loading ? "..." : formatPKR(stats?.openingBalanceCurrentMonth ?? 0)}
+          icon={Clock}
+        />
+        <StatCard
           title="Net Balance"
           value={loading ? "..." : formatPKR(stats?.balance ?? 0)}
+          icon={Clock}
+        />
+        <StatCard
+          title="Closing Balance"
+          value={loading ? "..." : formatPKR(stats?.closingBalanceCurrentMonth ?? stats?.balance ?? 0)}
           icon={Clock}
         />
       </div>
