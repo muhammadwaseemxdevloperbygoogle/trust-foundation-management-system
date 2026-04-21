@@ -1,9 +1,12 @@
 "use client"
 
-import { useState } from "react"
-import { FileText, Download, Calendar } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { Download, FileText, RefreshCw, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import {
   Select,
   SelectContent,
@@ -11,25 +14,77 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
+import { formatDate, formatPKR } from "@/src/lib/waqf-utils"
 
-const reportTypes = [
-  {
-    id: "ledger",
-    name: "Donor Ledger Report",
-    description: "Month-by-month paid and pending status based on recorded donor payments.",
-    icon: FileText,
-  },
-]
+type Settings = {
+  applicationName: string
+  trustName: string
+  tagline?: string
+  phone?: string
+  email?: string
+  address?: string
+  city?: string
+  registrationNumber?: string
+}
 
-function toCsv(rows: Array<{ donorId: string; donorName: string; year: number; month: number; status: string; amount: number }>) {
-  const header = "donorId,donorName,year,month,status,amount"
-  const body = rows.map((row) => {
-    const donorName = `"${row.donorName.replace(/"/g, '""')}"`
-    return [row.donorId, donorName, row.year, row.month, row.status, row.amount].join(",")
-  })
-  return [header, ...body].join("\n")
+type DonorOption = {
+  _id: string
+  donorId: string
+  name: string
+  phone?: string
+}
+
+type PaymentReportRow = {
+  _id: string
+  paymentId: string
+  paymentNo?: string
+  amount: number
+  month: number
+  year: number
+  paymentDate: string
+  status: "paid" | "pending" | "missed"
+  method: string
+  notes?: string
+  donor: {
+    _id: string
+    donorId: string
+    name: string
+    phone?: string
+  }
+}
+
+type PaymentReportResponse = {
+  payments: PaymentReportRow[]
+}
+
+function toCsv(rows: PaymentReportRow[]) {
+  const header = [
+    "donorId",
+    "donorName",
+    "paymentId",
+    "paymentNo",
+    "paymentDate",
+    "month",
+    "year",
+    "status",
+    "method",
+    "amount",
+  ]
+
+  const body = rows.map((row) => [
+    row.donor.donorId,
+    `"${row.donor.name.replace(/"/g, '""')}"`,
+    row.paymentId,
+    row.paymentNo || "",
+    row.paymentDate,
+    row.month,
+    row.year,
+    row.status,
+    row.method,
+    row.amount,
+  ].join(","))
+
+  return [header.join(","), ...body].join("\n")
 }
 
 function downloadFile(content: string, fileName: string, mimeType: string) {
@@ -44,223 +99,505 @@ function downloadFile(content: string, fileName: string, mimeType: string) {
   URL.revokeObjectURL(url)
 }
 
-export default function ReportsPage() {
-  const [selectedReport, setSelectedReport] = useState<string>("")
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const [lastGeneratedAt, setLastGeneratedAt] = useState<string>("")
-  const [lastRowCount, setLastRowCount] = useState(0)
+function monthName(month: number) {
+  return new Intl.DateTimeFormat("en", { month: "short" }).format(new Date(2026, month - 1, 1))
+}
 
-  const handleGenerate = async (format: string) => {
-    if (!selectedReport) {
-      setError("Please select a report type")
-      return
+export default function ReportsPage() {
+  const today = new Date().toISOString().slice(0, 10)
+  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
+
+  const [donors, setDonors] = useState<DonorOption[]>([])
+  const [selectedDonorId, setSelectedDonorId] = useState<string>("all")
+  const [fromDate, setFromDate] = useState(startOfMonth)
+  const [toDate, setToDate] = useState(today)
+  const [payments, setPayments] = useState<PaymentReportRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [donorsLoading, setDonorsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [lastGeneratedAt, setLastGeneratedAt] = useState("")
+  const [settings, setSettings] = useState<Settings | null>(null)
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const res = await fetch("/api/settings")
+        if (!res.ok) throw new Error("Failed to load settings")
+        const data = await res.json()
+        setSettings(data?.settings || null)
+      } catch {
+        // Settings load failed, continue without them
+      }
     }
 
+    void loadSettings()
+  }, [])
+
+  useEffect(() => {
+    const loadDonors = async () => {
+      setDonorsLoading(true)
+      try {
+        const res = await fetch("/api/donors?limit=0")
+        const data = await res.json()
+        if (!res.ok) {
+          throw new Error(data?.error || "Failed to load donors")
+        }
+        setDonors(Array.isArray(data.donors) ? data.donors : [])
+      } catch {
+        setError("Failed to load donor list")
+      } finally {
+        setDonorsLoading(false)
+      }
+    }
+
+    void loadDonors()
+  }, [])
+
+  const loadReport = async () => {
+    setLoading(true)
     setError("")
-    setSuccess("")
-    setIsGenerating(true)
 
     try {
-      const effectiveYear = startDate ? Number(startDate.slice(0, 4)) : new Date().getFullYear()
-      const res = await fetch(`/api/reports/ledger?year=${effectiveYear}`)
-      const data = await res.json()
+      const params = new URLSearchParams()
+      if (selectedDonorId && selectedDonorId !== "all") {
+        params.set("donorId", selectedDonorId)
+      }
+      if (fromDate) params.set("fromDate", fromDate)
+      if (toDate) params.set("toDate", toDate)
+
+      const res = await fetch(`/api/payments?${params.toString()}`)
+      const data: PaymentReportResponse = await res.json()
 
       if (!res.ok) {
-        setError(data?.error || "Failed to generate report")
-        return
+        throw new Error((data as { error?: string })?.error || "Failed to load report")
       }
 
-      const flatRows: Array<{ donorId: string; donorName: string; year: number; month: number; status: string; amount: number }> = []
-      for (const donorReport of data.report || []) {
-        const donorId = donorReport?.donor?.donorId || ""
-        const donorName = donorReport?.donor?.name || ""
-        for (const monthRow of donorReport?.months || []) {
-          flatRows.push({
-            donorId,
-            donorName,
-            year: donorReport.year,
-            month: monthRow.month,
-            status: monthRow.status,
-            amount: monthRow.amount,
-          })
-        }
-      }
-
-      setLastRowCount(flatRows.length)
+      setPayments(Array.isArray(data.payments) ? data.payments : [])
       setLastGeneratedAt(new Date().toLocaleString())
-
-      if (format === "csv" || format === "excel") {
-        const csv = toCsv(flatRows)
-        downloadFile(csv, `ledger-${effectiveYear}.csv`, "text/csv;charset=utf-8")
-        setSuccess(`Generated ${flatRows.length} rows and downloaded CSV file.`)
-        return
-      }
-
-      if (format === "pdf") {
-        setSuccess(`Report generated with ${flatRows.length} rows. PDF export is not connected yet.`)
-      }
-    } catch {
-      setError("Failed to generate report")
+    } catch (fetchError) {
+      setPayments([])
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load report")
     } finally {
-      setIsGenerating(false)
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    if (!donorsLoading) {
+      void loadReport()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [donorsLoading])
+
+  const selectedDonor = useMemo(() => {
+    if (selectedDonorId === "all") return null
+    return donors.find((donor) => donor._id === selectedDonorId) || null
+  }, [donors, selectedDonorId])
+
+  const summary = useMemo(() => {
+    const totalRows = payments.length
+    const totalAmount = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+    const donorsInReport = new Set(payments.map((payment) => payment.donor._id)).size
+
+    return {
+      totalRows,
+      totalAmount,
+      donorsInReport,
+    }
+  }, [payments])
+
+  const donorBreakdown = useMemo(() => {
+    const grouped = new Map<string, { donorId: string; donorName: string; count: number; amount: number }>()
+
+    for (const payment of payments) {
+      const existing = grouped.get(payment.donor._id)
+      if (existing) {
+        existing.count += 1
+        existing.amount += Number(payment.amount || 0)
+        continue
+      }
+
+      grouped.set(payment.donor._id, {
+        donorId: payment.donor.donorId,
+        donorName: payment.donor.name,
+        count: 1,
+        amount: Number(payment.amount || 0),
+      })
+    }
+
+    return Array.from(grouped.values()).sort((a, b) => b.amount - a.amount)
+  }, [payments])
+
+  const exportCsv = () => {
+    if (payments.length === 0) return
+    downloadFile(toCsv(payments), `report-${selectedDonorId === "all" ? "all-donors" : selectedDonor?.donorId || "donor"}.csv`, "text/csv;charset=utf-8")
+  }
+
+  const handlePrint = () => {
+    const printWindow = window.open("", "", "height=800,width=900")
+    if (!printWindow) {
+      alert("Please allow pop-ups to print the report")
+      return
+    }
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Donor Report - ${selectedDonor?.name || "All Donors"}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
+            .print-header { 
+              text-align: center;
+              border-bottom: 2px solid #000; 
+              margin-bottom: 20px; 
+              padding-bottom: 15px;
+            }
+            .print-header h1 { font-size: 20px; font-weight: bold; margin: 0 0 5px 0; }
+            .print-header p { font-size: 12px; color: #666; margin: 0; }
+            .report-details {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px;
+              margin-bottom: 20px;
+              font-size: 12px;
+            }
+            .report-details div { padding: 8px; background: #f5f5f5; }
+            .report-details label { font-weight: bold; }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-bottom: 20px;
+            }
+            table thead { background: #f0f0f0; }
+            table th, table td { 
+              padding: 8px; 
+              text-align: left; 
+              border: 1px solid #ddd; 
+              font-size: 11px;
+            }
+            table th { font-weight: bold; }
+            table tr:nth-child(even) { background: #fafafa; }
+            .summary-section {
+              margin-top: 20px;
+              border-top: 1px solid #ddd;
+              padding-top: 15px;
+            }
+            .summary-item {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 8px;
+              font-size: 12px;
+            }
+            .summary-item.total {
+              font-weight: bold;
+              border-top: 1px solid #333;
+              border-bottom: 2px solid #333;
+              padding: 5px 0;
+            }
+            .footer {
+              margin-top: 30px;
+              text-align: center;
+              font-size: 10px;
+              color: #999;
+              border-top: 1px solid #ddd;
+              padding-top: 10px;
+            }
+            @media print {
+              body { margin: 0; padding: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-header">
+            <h1>${settings?.trustName || "Waqf Trust"}</h1>
+            <p>${settings?.tagline || "Donation Management System"}</p>
+            <div style="font-size: 11px; color: #666; margin-top: 8px;">
+              ${settings?.address ? `<p>${settings.address}${settings.city ? ", " + settings.city : ""}</p>` : ""}
+              ${settings?.phone ? `<p>Phone: ${settings.phone}</p>` : ""}
+              ${settings?.email ? `<p>Email: ${settings.email}</p>` : ""}
+              ${settings?.registrationNumber ? `<p>Reg#: ${settings.registrationNumber}</p>` : ""}
+            </div>
+          </div>
+
+          <div style="text-align: center; margin: 20px 0; border-bottom: 1px solid #999; padding-bottom: 10px;">
+            <h2 style="margin: 0; font-size: 16px;">Donor Donation Report</h2>
+            <p style="margin: 5px 0 0 0; font-size: 11px; color: #666;">Generated on ${new Date().toLocaleString()}</p>
+          </div>
+
+          <div class="report-details">
+            <div>
+              <label>Donor:</label>
+              <p>${selectedDonor ? `${selectedDonor.name} (${selectedDonor.donorId})` : "All Donors"}</p>
+            </div>
+            <div>
+              <label>Date Range:</label>
+              <p>${fromDate} to ${toDate}</p>
+            </div>
+            <div>
+              <label>Total Donations:</label>
+              <p>${summary.totalRows}</p>
+            </div>
+            <div>
+              <label>Total Amount:</label>
+              <p>${formatPKR(summary.totalAmount)}</p>
+            </div>
+          </div>
+
+          ${payments.length > 0 ? `
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Donor</th>
+                  <th>Month/Year</th>
+                  <th>Status</th>
+                  <th style="text-align: right;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${payments.map((payment) => `
+                  <tr>
+                    <td>${formatDate(payment.paymentDate)}</td>
+                    <td>${payment.donor.name}<br/><small>${payment.donor.donorId}</small></td>
+                    <td>${monthName(payment.month)} ${payment.year}</td>
+                    <td>${payment.status}</td>
+                    <td style="text-align: right;">${formatPKR(payment.amount)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          ` : "<p>No records found.</p>"}
+
+          <div class="summary-section">
+            <div class="summary-item">
+              <span>Total Donations:</span>
+              <span>${summary.totalRows}</span>
+            </div>
+            <div class="summary-item">
+              <span>Number of Donors:</span>
+              <span>${summary.donorsInReport}</span>
+            </div>
+            <div class="summary-item total">
+              <span>Total Amount:</span>
+              <span>${formatPKR(summary.totalAmount)}</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            <p style="margin: 0 0 8px 0; font-weight: bold;">Generated by Wasi Foundation Management System</p>
+            <p style="margin: 0 0 3px 0;">📞 Contact: 03192173398</p>
+            <p style="margin: 0 0 8px 0;">Developer: Mr Wasi Dev</p>
+            <p style="margin: 0; border-top: 1px solid #ddd; padding-top: 8px;">This is a computer-generated report. Print or save this page for your records.</p>
+          </div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.print()
   }
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Reports</h1>
-        <p className="text-muted-foreground">
-          Generate and download comprehensive reports for Waqf management.
-        </p>
+        <p className="text-muted-foreground">Select a donor and date range, then generate the report on screen.</p>
       </div>
 
-      {/* Report generator */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Generate Report</CardTitle>
-          <CardDescription>Select a report type and date range to generate</CardDescription>
+          <CardDescription>Choose a donor and date range to preview payments below.</CardDescription>
         </CardHeader>
-        <CardContent>
-          {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
-          {success ? <p className="mb-3 text-sm text-primary">{success}</p> : null}
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="report-type">Report Type</FieldLabel>
-              <Select value={selectedReport} onValueChange={setSelectedReport}>
-                <SelectTrigger id="report-type">
-                  <SelectValue placeholder="Select report type" />
+        <CardContent className="space-y-4">
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <p className="mb-2 text-sm font-medium">Donor</p>
+              <Select value={selectedDonorId} onValueChange={setSelectedDonorId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={donorsLoading ? "Loading donors..." : "Select donor"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {reportTypes.map((report) => (
-                    <SelectItem key={report.id} value={report.id}>
-                      {report.name}
+                  <SelectItem value="all">All Donors</SelectItem>
+                  {donors.map((donor) => (
+                    <SelectItem key={donor._id} value={donor._id}>
+                      {donor.donorId} - {donor.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </Field>
-
-            {selectedReport && (
-              <div className="p-4 rounded-lg bg-muted/50 border border-border">
-                <p className="text-sm text-muted-foreground">
-                  {reportTypes.find((r) => r.id === selectedReport)?.description}
-                </p>
-              </div>
-            )}
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="start-date">Start Date</FieldLabel>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="start-date"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="end-date">End Date</FieldLabel>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="end-date"
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </Field>
             </div>
 
-            <div className="flex flex-wrap gap-3 pt-2">
-              <Button
-                onClick={() => handleGenerate("pdf")}
-                disabled={!selectedReport || isGenerating}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {isGenerating ? "Generating..." : "Export PDF"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleGenerate("excel")}
-                disabled={!selectedReport || isGenerating}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export Excel
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleGenerate("csv")}
-                disabled={!selectedReport || isGenerating}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export CSV
-              </Button>
+            <div>
+              <p className="mb-2 text-sm font-medium">From Date</p>
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             </div>
-          </FieldGroup>
+
+            <div>
+              <p className="mb-2 text-sm font-medium">To Date</p>
+              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={loadReport} disabled={loading}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              {loading ? "Generating..." : "Show Report"}
+            </Button>
+            <Button variant="outline" onClick={exportCsv} disabled={payments.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+            <Button variant="outline" onClick={handlePrint} disabled={payments.length === 0}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print Report
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Report types overview */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Available Report Types</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {reportTypes.map((report) => {
-            const Icon = report.icon
-            return (
-              <Card
-                key={report.id}
-                className={`cursor-pointer transition-colors hover:border-primary/50 ${
-                  selectedReport === report.id ? "border-primary bg-primary/5" : ""
-                }`}
-                onClick={() => setSelectedReport(report.id)}
-              >
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 shrink-0">
-                      <Icon className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold">{report.name}</h3>
-                      <p className="text-sm text-muted-foreground mt-1">{report.description}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Payments Found</p>
+            <p className="text-2xl font-semibold">{summary.totalRows}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Total Amount</p>
+            <p className="text-2xl font-semibold text-primary">{formatPKR(summary.totalAmount)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Donors in Result</p>
+            <p className="text-2xl font-semibold">{summary.donorsInReport}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Last Generated</p>
+            <p className="text-sm font-medium">{lastGeneratedAt || "Not generated yet"}</p>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Recent reports */}
+      <div className="grid gap-6 xl:grid-cols-5">
+        <Card className="xl:col-span-3">
+          <CardHeader>
+            <CardTitle className="text-lg">Report Output</CardTitle>
+            <CardDescription>
+              {selectedDonor
+                ? `${selectedDonor.name} (${selectedDonor.donorId})`
+                : "All donors within the selected date range."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {payments.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                No records found for the selected donor and date range.
+              </div>
+            ) : (
+              <div className="space-y-3 md:hidden">
+                {payments.map((payment) => (
+                  <div key={payment._id} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">{formatDate(payment.paymentDate)}</p>
+                      <Badge variant={payment.status === "paid" ? "default" : "secondary"}>{payment.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm font-medium">{payment.donor.name}</p>
+                    <p className="text-xs text-muted-foreground">{payment.donor.donorId}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">{monthName(payment.month)} {payment.year} • {payment.method}</p>
+                    <p className="mt-1 text-sm font-semibold text-primary">{formatPKR(payment.amount)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {payments.length > 0 ? (
+              <div className="hidden overflow-x-auto rounded-md border md:block">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Date</th>
+                      <th className="px-3 py-2 text-left font-medium">Donor</th>
+                      <th className="px-3 py-2 text-left font-medium">Month</th>
+                      <th className="px-3 py-2 text-left font-medium">Status</th>
+                      <th className="px-3 py-2 text-right font-medium">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((payment) => (
+                      <tr key={payment._id} className="border-t">
+                        <td className="px-3 py-2">{formatDate(payment.paymentDate)}</td>
+                        <td className="px-3 py-2">
+                          <div>
+                            <p className="font-medium">{payment.donor.name}</p>
+                            <p className="text-xs text-muted-foreground">{payment.donor.donorId}</p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">{monthName(payment.month)} {payment.year}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant={payment.status === "paid" ? "default" : "secondary"}>{payment.status}</Badge>
+                        </td>
+                        <td className="px-3 py-2 text-right">{formatPKR(payment.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-lg">Summary Breakdown</CardTitle>
+            <CardDescription>Donation totals grouped by donor for the current result set.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {donorBreakdown.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                Generate a report to see summary breakdown.
+              </div>
+            ) : (
+              donorBreakdown.map((item) => {
+                const rate = summary.totalAmount > 0 ? (item.amount / summary.totalAmount) * 100 : 0
+                return (
+                  <div key={item.donorId} className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{item.donorName}</p>
+                        <p className="text-xs text-muted-foreground">{item.donorId}</p>
+                      </div>
+                      <Badge variant="secondary">{item.count} entries</Badge>
+                    </div>
+                    <p className="mt-2 font-medium text-primary">{formatPKR(item.amount)}</p>
+                    <div className="mt-2">
+                      <Progress value={Math.min(100, rate)} />
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Recently Generated Reports</CardTitle>
-          <CardDescription>Latest generated report metadata.</CardDescription>
+          <CardTitle className="text-lg">Generated Report Note</CardTitle>
+          <CardDescription>Use the button above to regenerate the on-screen report for a different donor or date range.</CardDescription>
         </CardHeader>
         <CardContent>
-          {lastGeneratedAt ? (
-            <div className="rounded-lg border border-border p-4">
-              <p className="font-medium">Last generated: {lastGeneratedAt}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Rows included: {lastRowCount}</p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-border p-8 text-center">
-              <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
-              <p className="mt-3 font-medium">No generated reports yet</p>
-            </div>
-          )}
+          <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
+            <FileText className="mb-3 h-10 w-10 text-muted-foreground" />
+            The report shown above is generated directly from the selected donor and date filters.
+          </div>
         </CardContent>
       </Card>
     </div>

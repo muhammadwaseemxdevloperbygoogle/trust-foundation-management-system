@@ -229,7 +229,7 @@ export default function ExpendituresPage() {
           <p className="text-muted-foreground">Track donation spending, including Qari/Imam salary and mosque expenses.</p>
         </div>
         {canCreate ? (
-          <Button type="button" onClick={openAdd}>
+          <Button type="button" onClick={openAdd} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" />
             Add Expenditure
           </Button>
@@ -240,7 +240,7 @@ export default function ExpendituresPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Input
               placeholder="Search by ID, title, description"
               value={search}
@@ -269,8 +269,51 @@ export default function ExpendituresPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="space-y-3 p-3 md:hidden">
+            {filteredItems.length === 0 ? (
+              <div className="rounded-md border p-4 text-sm text-muted-foreground">No expenditures found.</div>
+            ) : (
+              filteredItems.map((item) => (
+                <div key={item._id} className="rounded-md border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold">{item.expenditureId}</p>
+                      <p className="text-sm font-medium">{item.title}</p>
+                    </div>
+                    <Badge variant={item.mode === "received" ? "secondary" : "outline"} className="capitalize">
+                      {item.mode}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.category} • {new Date(item.date).toLocaleDateString()}</p>
+                  <p className="text-xs text-muted-foreground">Approved by: {item.approvedBy || "-"}</p>
+                  <p className="mt-2 text-sm font-semibold">{formatPKR(item.amount)}</p>
+                  <p className="text-xs text-muted-foreground">{item.description || "-"}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {canEdit ? (
+                      <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
+                        <Pencil className="mr-1 h-3.5 w-3.5" />
+                        Edit
+                      </Button>
+                    ) : null}
+                    {canDelete ? (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDelete(item)}
+                        disabled={deletingId === item._id}
+                      >
+                        <Trash2 className="mr-1 h-3.5 w-3.5" />
+                        {deletingId === item._id ? "Deleting..." : "Delete"}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
+            <Table className="min-w-[980px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>

@@ -63,12 +63,14 @@ export default function DashboardPage() {
   const [error, setError] = useState("")
 
   useEffect(() => {
+    const controller = new AbortController()
+
     const loadDashboard = async () => {
       try {
         setLoading(true)
         const [statsRes, propertiesRes] = await Promise.all([
-          fetch("/api/dashboard/stats"),
-          fetch("/api/properties"),
+          fetch("/api/dashboard/stats", { signal: controller.signal }),
+          fetch("/api/properties", { signal: controller.signal }),
         ])
 
         const statsData = await statsRes.json()
@@ -90,7 +92,11 @@ export default function DashboardPage() {
       }
     }
 
-    loadDashboard()
+    void loadDashboard()
+
+    return () => {
+      controller.abort()
+    }
   }, [])
 
   const activityItems = [
@@ -170,20 +176,20 @@ export default function DashboardPage() {
                 <CardDescription>Common tasks you can perform</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-3">
-                  <Button asChild>
+                <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3">
+                  <Button asChild className="w-full sm:w-auto">
                     <Link href="/dashboard/properties/new">
                       <Plus className="mr-2 h-4 w-4" />
                       Add Property
                     </Link>
                   </Button>
-                  <Button variant="outline" asChild>
+                  <Button variant="outline" asChild className="w-full sm:w-auto">
                     <Link href="/dashboard/donors">
                       <Users className="mr-2 h-4 w-4" />
                       Manage Donors
                     </Link>
                   </Button>
-                  <Button variant="outline" asChild>
+                  <Button variant="outline" asChild className="w-full sm:w-auto">
                     <Link href="/dashboard/reports">
                       <FileText className="mr-2 h-4 w-4" />
                       Generate Report
