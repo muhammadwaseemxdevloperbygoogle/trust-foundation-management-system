@@ -4,6 +4,14 @@ import { AuditLog, Donor, Payment } from "@/src/models"
 
 const ALLOWED_METHODS = new Set(["cash", "bank_transfer", "easypaisa", "jazzcash"])
 
+function monthWithOffset(month: number, year: number, offset: number) {
+  const d = new Date(year, month - 1 + offset, 1)
+  return {
+    month: d.getMonth() + 1,
+    year: d.getFullYear(),
+  }
+}
+
 function duplicatePaymentErrorMessage(error: { keyPattern?: Record<string, unknown>; keyValue?: Record<string, unknown> }) {
   const patternKeys = Object.keys(error.keyPattern || {})
 
@@ -32,6 +40,8 @@ export async function GET(req: NextRequest) {
     const year = searchParams.get("year")
     const status = searchParams.get("status")
     const method = searchParams.get("method")
+    const fromDate = searchParams.get("fromDate")
+    const toDate = searchParams.get("toDate")
 
     const filter: Record<string, unknown> = {}
     if (donorId) filter.donor = donorId
@@ -39,6 +49,30 @@ export async function GET(req: NextRequest) {
     if (year) filter.year = Number(year)
     if (status) filter.status = status
     if (method) filter.method = method
+
+    if (fromDate || toDate) {
+      const paymentDateFilter: Record<string, Date> = {}
+
+      if (fromDate) {
+        const from = new Date(fromDate)
+        if (!Number.isNaN(from.getTime())) {
+          paymentDateFilter.$gte = from
+        }
+      }
+
+      if (toDate) {
+        const to = new Date(toDate)
+        if (!Number.isNaN(to.getTime())) {
+          // include full day for end date
+          to.setHours(23, 59, 59, 999)
+          paymentDateFilter.$lte = to
+        }
+      }
+
+      if (Object.keys(paymentDateFilter).length > 0) {
+        filter.paymentDate = paymentDateFilter
+      }
+    }
 
     const payments = await Payment.find(filter)
       .populate("donor", "name donorId phone")
@@ -63,6 +97,8 @@ export async function POST(req: NextRequest) {
     const method = String(body?.method || "cash")
     const receivedBy = body?.receivedBy ? String(body.receivedBy) : undefined
     const notes = body?.notes ? String(body.notes) : undefined
+    const isPrevious = Boolean(body?.is_previous)
+    const isAdvance = Boolean(body?.is_advance)
 
     if (!donorId) {
       return NextResponse.json({ error: "Donor is required" }, { status: 400 })
@@ -80,6 +116,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid payment method" }, { status: 400 })
     }
 
+    if (isPrevious && isAdvance) {
+      return NextResponse.json(
+        { error: "Select only one split mode: is_previous or is_advance" },
+        { status: 400 }
+      )
+    }
+
     const donor = await Donor.findById(donorId)
     if (!donor) {
       return NextResponse.json({ error: "Donor not found" }, { status: 404 })
@@ -94,41 +137,90 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 })
     }
 
-    const duplicate = await Payment.findOne({
-      donor: donorId,
-      month,
-      year,
-    })
+    const monthlyAmount = Number(donor.monthlyAmount || 1000)
+    const splitModeEnabled = isPrevious || isAdvance
+    const periods: Array<{ month: number; year: number; amount: number }> = []
 
-    if (duplicate) {
+    if (splitModeEnabled) {
+      if (!Number.isFinite(monthlyAmount) || monthlyAmount <= 0) {
+        return NextResponse.json(
+          { error: "Donor monthly amount must be greater than 0 to use split mode" },
+          { status: 400 }
+        )
+      }
+
+      if (amount % monthlyAmount !== 0) {
+        return NextResponse.json(
+          { error: `Amount must be exact multiple of donor monthly amount (${monthlyAmount}) for split mode` },
+          { status: 400 }
+        )
+      }
+
+      const periodCount = Math.max(1, Math.round(amount / monthlyAmount))
+      for (let i = 0; i < periodCount; i += 1) {
+        const offset = isPrevious ? -(periodCount - 1 - i) : i
+        const target = monthWithOffset(month, year, offset)
+        periods.push({
+          month: target.month,
+          year: target.year,
+          amount: monthlyAmount,
+        })
+      }
+    } else {
+      periods.push({ month, year, amount })
+    }
+
+    const duplicateRecords = await Payment.find({
+      donor: donorId,
+      $or: periods.map((p) => ({ month: p.month, year: p.year })),
+    }).lean()
+
+    if (duplicateRecords.length > 0) {
+      const duplicateMonths = duplicateRecords
+        .map((p) => `${String(p.month).padStart(2, "0")}/${p.year}`)
+        .join(", ")
+
       return NextResponse.json(
-        { error: "Payment already exists for donor in selected month and year" },
+        { error: `Payment already exists for: ${duplicateMonths}` },
         { status: 400 }
       )
     }
 
-    const payment = await Payment.create({
-      paymentNo: `WTF-PNO-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-      donor: donorId,
-      amount,
-      month,
-      year,
-      paymentDate: body.paymentDate || new Date(),
-      method,
-      status: "paid",
-      receivedBy,
-      notes,
-    })
+    const createdPayments = await Promise.all(
+      periods.map((period) =>
+        Payment.create({
+          paymentNo: `WTF-PNO-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+          donor: donorId,
+          amount: period.amount,
+          month: period.month,
+          year: period.year,
+          paymentDate: body.paymentDate || new Date(period.year, period.month - 1, 1),
+          method,
+          status: "paid",
+          receivedBy,
+          notes,
+        })
+      )
+    )
 
     await AuditLog.create({
       action: "payment_recorded",
       model: "Payment",
-      recordId: payment.paymentId,
-      description: `Payment recorded for ${donor.name} (${month}/${year})`,
+      recordId: createdPayments[0].paymentId,
+      description: splitModeEnabled
+        ? `Split payment recorded for ${donor.name} (${createdPayments.length} months from ${periods[0].month}/${periods[0].year} to ${periods[periods.length - 1].month}/${periods[periods.length - 1].year})`
+        : `Payment recorded for ${donor.name} (${month}/${year})`,
       performedBy: receivedBy || "System",
     })
 
-    return NextResponse.json({ payment }, { status: 201 })
+    return NextResponse.json(
+      {
+        payment: createdPayments[0],
+        payments: createdPayments,
+        createdCount: createdPayments.length,
+      },
+      { status: 201 }
+    )
   } catch (error: unknown) {
     const knownError = error as {
       name?: string

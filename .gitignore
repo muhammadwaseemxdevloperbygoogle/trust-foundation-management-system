@@ -16,6 +16,9 @@ scripts/
 # Legacy donor import file
 walfair foundation  imtiaz -  ویلفیئر فاؤنڈیشن ڈمیاں .csv
 
+# Local temporary files
+temp/
+
 # Common ignores
 node_modules
 .next/

@@ -23,7 +23,7 @@ interface TopNavbarProps {
 export function TopNavbar({ onMenuClick }: TopNavbarProps) {
   const { user, logout } = useAuth()
   const router = useRouter()
-  const { applicationName } = useAppSettings()
+  const { applicationName, trustName, tagline } = useAppSettings()
   const [isDark, setIsDark] = useState(false)
 
   useEffect(() => {
@@ -66,9 +66,14 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
           <Menu className="h-5 w-5" />
           <span className="sr-only">Toggle menu</span>
         </Button>
-        <h1 className="max-w-[42vw] truncate text-sm font-semibold text-card-foreground sm:max-w-none sm:text-lg">
-          {applicationName}
-        </h1>
+        <div className="max-w-[55vw] min-w-0 sm:max-w-none">
+          <h1 className="truncate text-sm font-semibold text-card-foreground sm:text-lg">
+            {trustName}
+          </h1>
+          <p className="hidden truncate text-xs text-muted-foreground sm:block">
+            {tagline || applicationName}
+          </p>
+        </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
