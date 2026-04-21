@@ -34,10 +34,44 @@ export async function GET() {
       .sort({ paymentDate: -1 })
       .lean()
 
+    const recentPayments = await Payment.find({ status: "paid" })
+      .populate("donor", "name donorId")
+      .sort({ paymentDate: -1 })
+      .limit(10)
+      .lean()
+
     const currentMonthCollected = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0)
     const currentMonthTarget = activeDonors * 1000
     const currentMonthPending = Math.max(0, currentMonthTarget - currentMonthCollected)
     const collectionRate = currentMonthTarget > 0 ? (currentMonthCollected / currentMonthTarget) * 100 : 0
+
+    const allPaidAgg = await Payment.aggregate([
+      { $match: { status: "paid" } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ])
+
+    const allExpenditureAgg = await Expenditure.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalPaid: {
+            $sum: {
+              $cond: [{ $eq: [{ $ifNull: ["$mode", "pay"] }, "pay"] }, "$amount", 0],
+            },
+          },
+          totalReceived: {
+            $sum: {
+              $cond: [{ $eq: [{ $ifNull: ["$mode", "pay"] }, "received"] }, "$amount", 0],
+            },
+          },
+        },
+      },
+    ])
+
+    const allTimeCollected = allPaidAgg[0]?.total || 0
+    const allTimeExpenditure = allExpenditureAgg[0]?.totalPaid || 0
+    const allTimeReceived = allExpenditureAgg[0]?.totalReceived || 0
+    const allTimeBalance = allTimeCollected + allTimeReceived - allTimeExpenditure
 
     const ytdCollectedAgg = await Payment.aggregate([
       { $match: { year: currentYear, status: "paid" } },
@@ -205,10 +239,14 @@ export async function GET() {
       yearToDateCollected,
       yearToDateExpenditure,
       yearToDateReceived,
-      balance,
+      allTimeCollected,
+      allTimeExpenditure,
+      allTimeReceived,
+      allTimeBalance,
+      balance: allTimeBalance,
       openingBalanceCurrentMonth,
       closingBalanceCurrentMonth,
-      recentPayments: currentMonthPayments.slice(0, 10),
+      recentPayments: recentPayments.length > 0 ? recentPayments : currentMonthPayments.slice(0, 10),
       recentExpenditures,
       monthlyBreakdown,
     })
