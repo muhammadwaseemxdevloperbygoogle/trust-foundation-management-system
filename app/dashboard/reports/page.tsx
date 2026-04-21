@@ -106,6 +106,15 @@ function monthName(month: number) {
   return new Intl.DateTimeFormat("en", { month: "short" }).format(new Date(2026, month - 1, 1))
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10)
   const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
@@ -250,7 +259,7 @@ export default function ReportsPage() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Donor Report - ${selectedDonor?.name || "All Donors"}</title>
+          <title>Donor Report - ${selectedDonor ? escapeHtml(selectedDonor.name) : "All Donors"}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
@@ -336,7 +345,7 @@ export default function ReportsPage() {
           <div class="report-details">
             <div>
               <label>Donor:</label>
-              <p>${selectedDonor ? `${selectedDonor.name} (${selectedDonor.donorId})` : "All Donors"}</p>
+              <p>${selectedDonor ? `${escapeHtml(selectedDonor.name)} (${escapeHtml(selectedDonor.donorId)})` : "All Donors"}</p>
             </div>
             <div>
               <label>Date Range:</label>
@@ -367,7 +376,7 @@ export default function ReportsPage() {
                 ${payments.map((payment) => `
                   <tr>
                     <td>${formatDate(payment.paymentDate)}</td>
-                    <td>${payment.donor.name}<br/><small>${payment.donor.donorId}</small></td>
+                    <td>${escapeHtml(payment.donor.name)}<br/><small>${escapeHtml(payment.donor.donorId)}</small></td>
                     <td>${monthName(payment.month)} ${payment.year}</td>
                     <td>${payment.status}</td>
                     <td style="text-align: right;">${formatPKR(payment.amount)}</td>
@@ -475,8 +484,8 @@ export default function ReportsPage() {
               ${donorDirectory.map((donor, index) => `
                 <tr>
                   <td>${index + 1}</td>
-                  <td>${donor.donorId}</td>
-                  <td>${donor.name}</td>
+                  <td>${escapeHtml(donor.donorId)}</td>
+                  <td>${escapeHtml(donor.name)}</td>
                   <td style="text-align:right;">${formatPKR(Number(donor.monthlyAmount || 1000))}</td>
                 </tr>
               `).join("")}
