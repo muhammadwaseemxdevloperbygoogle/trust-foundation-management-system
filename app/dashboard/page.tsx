@@ -38,6 +38,10 @@ export default function DashboardPage() {
     yearToDateCollected: number
     yearToDateExpenditure: number
     yearToDateReceived: number
+    allTimeCollected: number
+    allTimeExpenditure: number
+    allTimeReceived: number
+    allTimeBalance: number
     openingBalanceCurrentMonth: number
     closingBalanceCurrentMonth: number
     balance: number
@@ -141,23 +145,23 @@ export default function DashboardPage() {
           icon={Users}
         />
         <StatCard
-          title="Monthly Income"
-          value={loading ? "..." : formatPKR(stats?.currentMonthCollected ?? 0)}
+          title="All-Time Income"
+          value={loading ? "..." : formatPKR(stats?.allTimeCollected ?? stats?.yearToDateCollected ?? 0)}
           icon={DollarSign}
         />
         <StatCard
-          title="Opening Balance"
-          value={loading ? "..." : formatPKR(stats?.openingBalanceCurrentMonth ?? 0)}
+          title="All-Time Expenses"
+          value={loading ? "..." : formatPKR(stats?.allTimeExpenditure ?? stats?.yearToDateExpenditure ?? 0)}
           icon={Clock}
         />
         <StatCard
           title="Net Balance"
-          value={loading ? "..." : formatPKR(stats?.balance ?? 0)}
+          value={loading ? "..." : formatPKR(stats?.allTimeBalance ?? stats?.balance ?? 0)}
           icon={Clock}
         />
         <StatCard
-          title="Closing Balance"
-          value={loading ? "..." : formatPKR(stats?.closingBalanceCurrentMonth ?? stats?.balance ?? 0)}
+          title="Cash In Hand"
+          value={loading ? "..." : formatPKR((stats?.allTimeCollected ?? 0) + (stats?.allTimeReceived ?? 0) - (stats?.allTimeExpenditure ?? 0))}
           icon={Clock}
         />
       </div>
