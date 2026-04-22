@@ -246,7 +246,7 @@ export async function GET() {
       balance: allTimeBalance,
       openingBalanceCurrentMonth,
       closingBalanceCurrentMonth,
-      recentPayments: recentPayments.length > 0 ? recentPayments : currentMonthPayments.slice(0, 10),
+      recentPayments: recentPayments,
       recentExpenditures,
       monthlyBreakdown,
     })
