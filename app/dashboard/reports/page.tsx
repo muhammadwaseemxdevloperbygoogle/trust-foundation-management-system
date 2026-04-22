@@ -106,6 +106,15 @@ function monthName(month: number) {
   return new Intl.DateTimeFormat("en", { month: "short" }).format(new Date(2026, month - 1, 1))
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 export default function ReportsPage() {
   const today = new Date().toISOString().slice(0, 10)
   const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
@@ -120,6 +129,12 @@ export default function ReportsPage() {
   const [error, setError] = useState("")
   const [lastGeneratedAt, setLastGeneratedAt] = useState("")
   const [settings, setSettings] = useState<Settings | null>(null)
+  
+  // Payments Details state
+  const [paymentsDetailYear, setPaymentsDetailYear] = useState(String(new Date().getFullYear()))
+  const [monthlyPayments, setMonthlyPayments] = useState<Record<number, PaymentReportRow[]>>({})
+  const [paymentsDetailLoading, setPaymentsDetailLoading] = useState(false)
+  const [paymentsDetailError, setPaymentsDetailError] = useState("")
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -192,6 +207,54 @@ export default function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [donorsLoading])
 
+  const loadPaymentsDetails = async (year: string) => {
+    setPaymentsDetailLoading(true)
+    setPaymentsDetailError("")
+    try {
+      const yearNum = Number(year)
+      const yearStart = `${year}-01-01`
+      const yearEnd = `${year}-12-31`
+      
+      const params = new URLSearchParams()
+      params.set("fromDate", yearStart)
+      params.set("toDate", yearEnd)
+
+      const res = await fetch(`/api/payments?${params.toString()}`)
+      const data: PaymentReportResponse = await res.json()
+
+      if (!res.ok) {
+        throw new Error((data as { error?: string })?.error || "Failed to load payment details")
+      }
+
+      // Group payments by month
+      const grouped: Record<number, PaymentReportRow[]> = {}
+      for (let month = 1; month <= 12; month++) {
+        grouped[month] = []
+      }
+
+      if (Array.isArray(data.payments)) {
+        for (const payment of data.payments) {
+          if (payment.year === yearNum) {
+            const monthPayments = grouped[payment.month] || []
+            monthPayments.push(payment)
+            grouped[payment.month] = monthPayments
+          }
+        }
+      }
+
+      setMonthlyPayments(grouped)
+    } catch (fetchError) {
+      setMonthlyPayments({})
+      setPaymentsDetailError(fetchError instanceof Error ? fetchError.message : "Failed to load payment details")
+    } finally {
+      setPaymentsDetailLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadPaymentsDetails(paymentsDetailYear)
+  }, [paymentsDetailYear])
+
   const selectedDonor = useMemo(() => {
     if (selectedDonorId === "all") return null
     return donors.find((donor) => donor._id === selectedDonorId) || null
@@ -250,7 +313,7 @@ export default function ReportsPage() {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Donor Report - ${selectedDonor?.name || "All Donors"}</title>
+          <title>Donor Report - ${selectedDonor ? escapeHtml(selectedDonor.name) : "All Donors"}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
@@ -336,7 +399,7 @@ export default function ReportsPage() {
           <div class="report-details">
             <div>
               <label>Donor:</label>
-              <p>${selectedDonor ? `${selectedDonor.name} (${selectedDonor.donorId})` : "All Donors"}</p>
+              <p>${selectedDonor ? `${escapeHtml(selectedDonor.name)} (${escapeHtml(selectedDonor.donorId)})` : "All Donors"}</p>
             </div>
             <div>
               <label>Date Range:</label>
@@ -367,7 +430,7 @@ export default function ReportsPage() {
                 ${payments.map((payment) => `
                   <tr>
                     <td>${formatDate(payment.paymentDate)}</td>
-                    <td>${payment.donor.name}<br/><small>${payment.donor.donorId}</small></td>
+                    <td>${escapeHtml(payment.donor.name)}<br/><small>${escapeHtml(payment.donor.donorId)}</small></td>
                     <td>${monthName(payment.month)} ${payment.year}</td>
                     <td>${payment.status}</td>
                     <td style="text-align: right;">${formatPKR(payment.amount)}</td>
@@ -475,8 +538,8 @@ export default function ReportsPage() {
               ${donorDirectory.map((donor, index) => `
                 <tr>
                   <td>${index + 1}</td>
-                  <td>${donor.donorId}</td>
-                  <td>${donor.name}</td>
+                  <td>${escapeHtml(donor.donorId)}</td>
+                  <td>${escapeHtml(donor.name)}</td>
                   <td style="text-align:right;">${formatPKR(Number(donor.monthlyAmount || 1000))}</td>
                 </tr>
               `).join("")}
@@ -734,6 +797,125 @@ export default function ReportsPage() {
             <FileText className="mb-3 h-10 w-10 text-muted-foreground" />
             The report shown above is generated directly from the selected donor and date filters.
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Payments Details</CardTitle>
+          <CardDescription>View all months of a year with payment records</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {paymentsDetailError ? <p className="text-sm text-destructive">{paymentsDetailError}</p> : null}
+
+          <div className="mb-4">
+            <p className="mb-2 text-sm font-medium">Select Year</p>
+            <Select value={paymentsDetailYear} onValueChange={setPaymentsDetailYear}>
+              <SelectTrigger className="w-full md:w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 10 }, (_, i) => {
+                  const year = new Date().getFullYear() - 5 + i
+                  return (
+                    <SelectItem key={year} value={String(year)}>
+                      {year}
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {paymentsDetailLoading ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+              Loading payments for {paymentsDetailYear}...
+            </div>
+          ) : (
+            <>
+              {/* Mobile View */}
+              <div className="space-y-4 md:hidden">
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                  const payments = monthlyPayments[month] || []
+                  const monthStr = monthName(month)
+                  const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+
+                  return (
+                    <div key={month} className="rounded-lg border p-4">
+                      <div className="mb-3 flex items-center justify-between border-b pb-3">
+                        <div>
+                          <p className="font-semibold">{monthStr} {paymentsDetailYear}</p>
+                          <p className="text-xs text-muted-foreground">{payments.length} payment(s)</p>
+                        </div>
+                        <p className="text-sm font-semibold text-primary">{formatPKR(totalAmount)}</p>
+                      </div>
+                      {payments.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No payments recorded</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {payments.map((payment) => (
+                            <div key={payment._id} className="rounded-md border border-dashed border-muted-foreground/30 p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-medium">{payment.donor.name}</p>
+                                <Badge variant={payment.status === "paid" ? "default" : "secondary"} className="text-xs">
+                                  {payment.status}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground">{payment.donor.donorId}</p>
+                              <div className="mt-1 flex items-center justify-between">
+                                <p className="text-xs text-muted-foreground">{payment.method}</p>
+                                <p className="text-xs font-semibold text-primary">{formatPKR(payment.amount)}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Desktop View */}
+              <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
+                  const payments = monthlyPayments[month] || []
+                  const monthStr = monthName(month)
+                  const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+
+                  return (
+                    <div key={month} className="rounded-lg border p-4">
+                      <div className="mb-3 border-b pb-3">
+                        <p className="font-semibold text-sm">{monthStr}</p>
+                        <p className="text-xs text-muted-foreground">{payments.length} payment(s)</p>
+                        <p className="mt-2 text-sm font-semibold text-primary">{formatPKR(totalAmount)}</p>
+                      </div>
+                      {payments.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No payments</p>
+                      ) : (
+                        <div className="max-h-64 space-y-2 overflow-y-auto">
+                          {payments.map((payment) => (
+                            <div key={payment._id} className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 p-2">
+                              <div className="flex items-start justify-between gap-1">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-xs font-medium">{payment.donor.name}</p>
+                                  <p className="truncate text-xs text-muted-foreground">{payment.donor.donorId}</p>
+                                </div>
+                                <Badge variant={payment.status === "paid" ? "default" : "secondary"} className="shrink-0 text-xs">
+                                  {payment.status === "paid" ? "✓" : payment.status === "pending" ? "⏳" : "✗"}
+                                </Badge>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">{payment.method}</p>
+                              <p className="text-xs font-semibold text-primary">{formatPKR(payment.amount)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

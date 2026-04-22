@@ -89,6 +89,20 @@ export default function DonorsPage() {
   const [viewMode, setViewMode] = useState<"donations" | "donors">("donations")
   const [filterMode, setFilterMode] = useState<"month" | "range">("month")
   const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+  const [deletingPaymentId, setDeletingPaymentId] = useState("")
+  const [isEditPaymentOpen, setIsEditPaymentOpen] = useState(false)
+  const [editPaymentError, setEditPaymentError] = useState("")
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [editingPaymentData, setEditingPaymentData] = useState({
+    amount: "0",
+    month: "1",
+    year: String(new Date().getFullYear()),
+    method: "cash" as "cash" | "bank_transfer" | "easypaisa" | "jazzcash",
+    status: "paid" as "paid" | "pending" | "missed",
+    receivedBy: "",
+    notes: "",
+  })
 
   const today = new Date()
   const [paymentMonth, setPaymentMonth] = useState(String(today.getMonth() + 1))
@@ -286,6 +300,95 @@ export default function DonorsPage() {
 
     setDeletingDonorId("")
     await loadDonors()
+  }
+
+  const handleEditPayment = (payment: PaymentItem) => {
+    setEditingPaymentId(payment._id)
+    setEditPaymentError("")
+    setEditingPaymentData({
+      amount: String(payment.amount),
+      month: String(payment.month),
+      year: String(payment.year),
+      method: payment.method,
+      status: payment.status,
+      receivedBy: "",
+      notes: payment.notes || "",
+    })
+    setIsEditPaymentOpen(true)
+  }
+
+  const handleDeletePayment = async (payment: PaymentItem) => {
+    const ok = window.confirm(`Delete payment ${payment.paymentId}?`)
+    if (!ok) return
+
+    setDeletingPaymentId(payment._id)
+
+    const res = await fetch(`/api/payments/${payment._id}`, {
+      method: "DELETE",
+    })
+    const data = await res.json()
+
+    if (!res.ok) {
+      setEntryError(data?.error || "Failed to delete payment")
+      setDeletingPaymentId("")
+      return
+    }
+
+    setDeletingPaymentId("")
+    setEntrySuccess("Payment deleted successfully")
+    if (filterMode === "month") {
+      await loadPayments({ month: paymentMonth, year: paymentYear })
+    } else if (fromDate || toDate) {
+      await loadPayments({ fromDate, toDate })
+    }
+  }
+
+  const handlePaymentEditSubmit = async () => {
+    if (!editingPaymentId || savingPayment) return
+
+    setEditPaymentError("")
+    setSavingPayment(true)
+
+    const res = await fetch(`/api/payments/${editingPaymentId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: Number(editingPaymentData.amount),
+        month: Number(editingPaymentData.month),
+        year: Number(editingPaymentData.year),
+        method: editingPaymentData.method,
+        status: editingPaymentData.status,
+        receivedBy: editingPaymentData.receivedBy || user?.name || "Admin",
+        notes: editingPaymentData.notes,
+      }),
+    })
+
+    const data = await res.json()
+    if (!res.ok) {
+      setEditPaymentError(data?.error || "Failed to update payment")
+      setSavingPayment(false)
+      return
+    }
+
+    setIsEditPaymentOpen(false)
+    setEditingPaymentId(null)
+    setEditingPaymentData({
+      amount: "0",
+      month: "1",
+      year: String(new Date().getFullYear()),
+      method: "cash",
+      status: "paid",
+      receivedBy: "",
+      notes: "",
+    })
+    setSavingPayment(false)
+    setEditPaymentError("")
+    setEntrySuccess("Payment updated successfully")
+    if (filterMode === "month") {
+      await loadPayments({ month: paymentMonth, year: paymentYear })
+    } else if (fromDate || toDate) {
+      await loadPayments({ fromDate, toDate })
+    }
   }
 
   const handleEntrySubmit = async () => {
@@ -498,6 +601,27 @@ export default function DonorsPage() {
                       <p>Method: {payment.method}</p>
                     </div>
                     <p className="mt-2 text-sm font-semibold text-primary">{formatPKR(payment.amount)}</p>
+                    {(canEdit || canDelete) && (
+                      <div className="mt-3 flex gap-2">
+                        {canEdit && (
+                          <Button size="sm" variant="outline" onClick={() => handleEditPayment(payment)}>
+                            <Pencil className="mr-1 h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={deletingPaymentId === payment._id}
+                            onClick={() => handleDeletePayment(payment)}
+                          >
+                            <Trash2 className="mr-1 h-3.5 w-3.5" />
+                            {deletingPaymentId === payment._id ? "Deleting..." : "Delete"}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })
@@ -514,16 +638,17 @@ export default function DonorsPage() {
                   <TableHead>Amount</TableHead>
                   <TableHead>Method</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paymentsLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-16 text-center text-muted-foreground">Loading donations...</TableCell>
+                    <TableCell colSpan={7} className="h-16 text-center text-muted-foreground">Loading donations...</TableCell>
                   </TableRow>
                 ) : payments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-16 text-center text-muted-foreground">No donations found for current filter.</TableCell>
+                    <TableCell colSpan={7} className="h-16 text-center text-muted-foreground">No donations found for current filter.</TableCell>
                   </TableRow>
                 ) : (
                   payments.map((payment) => {
@@ -539,6 +664,27 @@ export default function DonorsPage() {
                         <TableCell>{payment.method}</TableCell>
                         <TableCell>
                           <Badge variant={payment.status === "paid" ? "default" : "secondary"}>{payment.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="inline-flex gap-2">
+                            {canEdit && (
+                              <Button size="sm" variant="outline" onClick={() => handleEditPayment(payment)}>
+                                <Pencil className="mr-1 h-3.5 w-3.5" />
+                                Edit
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={deletingPaymentId === payment._id}
+                                onClick={() => handleDeletePayment(payment)}
+                              >
+                                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                                {deletingPaymentId === payment._id ? "Deleting..." : "Delete"}
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -887,6 +1033,109 @@ export default function DonorsPage() {
               </div>
             </FieldGroup>
           </form>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={isEditPaymentOpen} onOpenChange={setIsEditPaymentOpen}>
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Edit Payment</SheetTitle>
+            <SheetDescription>Update payment details.</SheetDescription>
+          </SheetHeader>
+          <div className="mt-6 space-y-4">
+            {editPaymentError ? <p className="text-sm text-destructive">{editPaymentError}</p> : null}
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="edit-amount">Amount (PKR)</FieldLabel>
+                <Input
+                  id="edit-amount"
+                  type="number"
+                  min={1}
+                  value={editingPaymentData.amount}
+                  onChange={(e) => setEditingPaymentData({ ...editingPaymentData, amount: e.target.value })} 
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="edit-month">Month</FieldLabel>
+                <Input
+                  id="edit-month"
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={editingPaymentData.month}
+                  onChange={(e) => setEditingPaymentData({ ...editingPaymentData, month: e.target.value })}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="edit-year">Year</FieldLabel>
+                <Input
+                  id="edit-year"
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  value={editingPaymentData.year}
+                  onChange={(e) => setEditingPaymentData({ ...editingPaymentData, year: e.target.value })}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="edit-method">Method</FieldLabel>
+                <Select
+                  value={editingPaymentData.method}
+                  onValueChange={(value: "cash" | "bank_transfer" | "easypaisa" | "jazzcash") =>
+                    setEditingPaymentData({ ...editingPaymentData, method: value })
+                  }
+                >
+                  <SelectTrigger id="edit-method"><SelectValue placeholder="Method" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="easypaisa">EasyPaisa</SelectItem>
+                    <SelectItem value="jazzcash">JazzCash</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="edit-status">Status</FieldLabel>
+                <Select
+                  value={editingPaymentData.status}
+                  onValueChange={(value: "paid" | "pending" | "missed") =>
+                    setEditingPaymentData({ ...editingPaymentData, status: value })
+                  }
+                >
+                  <SelectTrigger id="edit-status"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="missed">Missed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="edit-notes">Notes</FieldLabel>
+                <Input
+                  id="edit-notes"
+                  value={editingPaymentData.notes}
+                  onChange={(e) => setEditingPaymentData({ ...editingPaymentData, notes: e.target.value })}
+                  placeholder="Optional notes"
+                />
+              </Field>
+              <div className="flex gap-3 pt-4">
+                <Button onClick={handlePaymentEditSubmit} className="flex-1" disabled={savingPayment}>
+                  {savingPayment ? "Updating..." : "Update Payment"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditPaymentOpen(false)
+                    setEditingPaymentId(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </FieldGroup>
+          </div>
         </SheetContent>
       </Sheet>
     </div>
