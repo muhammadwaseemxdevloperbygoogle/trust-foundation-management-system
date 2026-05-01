@@ -29,7 +29,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (body.rights !== undefined) update.rights = Array.isArray(body.rights) ? body.rights : []
     if (body.password !== undefined && String(body.password).trim()) update.password = String(body.password).trim()
 
-    const user = await User.findByIdAndUpdate(id, { $set: update }, { new: true, projection: { password: 0 } }).lean()
+    const user = await User.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after', projection: { password: 0 } }).lean()
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })

@@ -1,12 +1,15 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Pencil, Plus, Trash2 } from "lucide-react"
+import { Pencil, Plus, Trash2, Users, DollarSign, FileText, Eye, Check, ChevronsUpDown } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -32,6 +35,7 @@ import {
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth, hasPermission } from "@/lib/auth-context"
 import { formatPKR } from "@/src/lib/waqf-utils"
 
@@ -73,53 +77,15 @@ export default function DonorsPage() {
   const canEdit = hasPermission(user?.role, "edit")
   const canDelete = hasPermission(user?.role, "delete")
 
+  // === DONOR STATE ===
   const [donors, setDonors] = useState<DonorItem[]>([])
-  const [payments, setPayments] = useState<PaymentItem[]>([])
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [isAddOpen, setIsAddOpen] = useState(false)
-  const [error, setError] = useState("")
-  const [addError, setAddError] = useState("")
-  const [adding, setAdding] = useState(false)
+  const [donorSearch, setDonorSearch] = useState("")
+  const [donorStatusFilter, setDonorStatusFilter] = useState<string>("all")
   const [editingDonorId, setEditingDonorId] = useState<string | null>(null)
   const [deletingDonorId, setDeletingDonorId] = useState("")
-  const [entryError, setEntryError] = useState("")
-  const [entrySuccess, setEntrySuccess] = useState("")
-  const [entrySaving, setEntrySaving] = useState(false)
-  const [viewMode, setViewMode] = useState<"donations" | "donors">("donations")
-  const [filterMode, setFilterMode] = useState<"month" | "range">("month")
-  const [paymentsLoading, setPaymentsLoading] = useState(false)
-  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
-  const [deletingPaymentId, setDeletingPaymentId] = useState("")
-  const [isEditPaymentOpen, setIsEditPaymentOpen] = useState(false)
-  const [editPaymentError, setEditPaymentError] = useState("")
-  const [savingPayment, setSavingPayment] = useState(false)
-  const [editingPaymentData, setEditingPaymentData] = useState({
-    amount: "0",
-    month: "1",
-    year: String(new Date().getFullYear()),
-    method: "cash" as "cash" | "bank_transfer" | "easypaisa" | "jazzcash",
-    status: "paid" as "paid" | "pending" | "missed",
-    receivedBy: "",
-    notes: "",
-  })
-
-  const today = new Date()
-  const [paymentMonth, setPaymentMonth] = useState(String(today.getMonth() + 1))
-  const [paymentYear, setPaymentYear] = useState(String(today.getFullYear()))
-  const [fromDate, setFromDate] = useState("")
-  const [toDate, setToDate] = useState("")
-  const [entryData, setEntryData] = useState({
-    donorId: "",
-    month: String(today.getMonth() + 1),
-    year: String(today.getFullYear()),
-    amount: "1000",
-    method: "cash" as "cash" | "bank_transfer" | "easypaisa" | "jazzcash",
-    receivedBy: user?.name || "Admin",
-    notes: "",
-    is_previous: false,
-    is_advance: false,
-  })
+  const [donorError, setDonorError] = useState("")
+  const [donorSuccess, setDonorSuccess] = useState("")
+  const [savingDonor, setSavingDonor] = useState(false)
 
   const [formData, setFormData] = useState({
     name: "",
@@ -133,11 +99,65 @@ export default function DonorsPage() {
     notes: "",
   })
 
+  // === PAYMENT STATE ===
+  const [payments, setPayments] = useState<PaymentItem[]>([])
+  const [paymentFilterMode, setPaymentFilterMode] = useState<"month" | "range">("month")
+  const [paymentMonth, setPaymentMonth] = useState(String(new Date().getMonth() + 1))
+  const [paymentYear, setPaymentYear] = useState(String(new Date().getFullYear()))
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+  const [deletingPaymentId, setDeletingPaymentId] = useState("")
+  const [isEditPaymentOpen, setIsEditPaymentOpen] = useState(false)
+  const [editPaymentError, setEditPaymentError] = useState("")
+  const [savingPayment, setSavingPayment] = useState(false)
+
+  const today = new Date()
+  const [entryData, setEntryData] = useState({
+    donorId: "",
+    month: String(today.getMonth() + 1),
+    year: String(today.getFullYear()),
+    amount: "1000",
+    method: "cash" as "cash" | "bank_transfer" | "easypaisa" | "jazzcash",
+    receivedBy: user?.name || "Admin",
+    notes: "",
+    is_previous: false,
+    is_advance: false,
+  })
+
+  const [entryError, setEntryError] = useState("")
+  const [entrySuccess, setEntrySuccess] = useState("")
+  const [entrySaving, setEntrySaving] = useState(false)
+  const [paymentDonorSearch, setPaymentDonorSearch] = useState("")
+  const [isPaymentDonorOpen, setIsPaymentDonorOpen] = useState(false)
+
+  const [editingPaymentData, setEditingPaymentData] = useState({
+    amount: "0",
+    month: "1",
+    year: String(new Date().getFullYear()),
+    method: "cash" as "cash" | "bank_transfer" | "easypaisa" | "jazzcash",
+    status: "paid" as "paid" | "pending" | "missed",
+    receivedBy: "",
+    notes: "",
+  })
+
+  // === PASSWORD VERIFICATION STATE ===
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [passwordInput, setPasswordInput] = useState("")
+  const [passwordError, setPasswordError] = useState("")
+  const [verifyingPassword, setVerifyingPassword] = useState(false)
+  const [pendingAction, setPendingAction] = useState<{
+    type: "delete_donor" | "edit_donor" | "delete_payment" | "edit_payment"
+    data: DonorItem | PaymentItem | null
+  } | null>(null)
+
+  // === LOAD DATA ===
   const loadDonors = async () => {
     const res = await fetch("/api/donors?limit=0")
     const data = await res.json()
     if (!res.ok) {
-      setError(data?.error || "Failed to fetch donors")
+      setDonorError(data?.error || "Failed to fetch donors")
       return
     }
     setDonors(data.donors || [])
@@ -152,7 +172,13 @@ export default function DonorsPage() {
     }
   }
 
-  const loadPayments = async (options?: { donorId?: string; month?: string; year?: string; fromDate?: string; toDate?: string }) => {
+  const loadPayments = async (options?: {
+    donorId?: string
+    month?: string
+    year?: string
+    fromDate?: string
+    toDate?: string
+  }) => {
     setPaymentsLoading(true)
     const params = new URLSearchParams()
     if (options?.donorId) params.set("donorId", options.donorId)
@@ -165,7 +191,7 @@ export default function DonorsPage() {
     const res = await fetch(`/api/payments${query}`)
     const data = await res.json()
     if (!res.ok) {
-      setEntryError(data?.error || "Failed to load payment records")
+      setEntryError(data?.error || "Failed to load payments")
       setPaymentsLoading(false)
       return
     }
@@ -178,55 +204,68 @@ export default function DonorsPage() {
   }, [])
 
   useEffect(() => {
-    if (filterMode === "month") {
+    if (paymentFilterMode === "month") {
       loadPayments({ month: paymentMonth, year: paymentYear })
-      return
-    }
-
-    if (fromDate || toDate) {
+    } else if (fromDate || toDate) {
       loadPayments({ fromDate, toDate })
-      return
+    } else {
+      setPayments([])
     }
-
-    setPayments([])
-  }, [filterMode, paymentMonth, paymentYear, fromDate, toDate])
+  }, [paymentFilterMode, paymentMonth, paymentYear, fromDate, toDate])
 
   useEffect(() => {
     if (!user?.name) return
     setEntryData((prev) => ({ ...prev, receivedBy: prev.receivedBy || user.name }))
   }, [user?.name])
 
+  // === FILTERS & SUMMARIES ===
   const filteredDonors = useMemo(() => {
     return donors.filter((donor) => {
       const matchesSearch =
-        donor.name.toLowerCase().includes(search.toLowerCase()) ||
-        donor.donorId.toLowerCase().includes(search.toLowerCase()) ||
-        (donor.email || "").toLowerCase().includes(search.toLowerCase())
+        donor.name.toLowerCase().includes(donorSearch.toLowerCase()) ||
+        donor.donorId.toLowerCase().includes(donorSearch.toLowerCase()) ||
+        (donor.email || "").toLowerCase().includes(donorSearch.toLowerCase())
 
-      const matchesStatus = statusFilter === "all" || donor.status === statusFilter
+      const matchesStatus = donorStatusFilter === "all" || donor.status === donorStatusFilter
       return matchesSearch && matchesStatus
     })
-  }, [donors, search, statusFilter])
+  }, [donors, donorSearch, donorStatusFilter])
 
-  const donationsSummary = useMemo(() => {
+  // Filter donors for payment form search
+  const filteredPaymentDonors = useMemo(() => {
+    return donors.filter((donor) => {
+      const searchLower = paymentDonorSearch.toLowerCase()
+      return (
+        donor.name.toLowerCase().includes(searchLower) ||
+        donor.donorId.toLowerCase().includes(searchLower) ||
+        (donor.email || "").toLowerCase().includes(searchLower) ||
+        donor.phone.toLowerCase().includes(searchLower)
+      )
+    })
+  }, [donors, paymentDonorSearch])
+
+  const paymentsSummary = useMemo(() => {
     const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
     const paidRows = payments.filter((p) => p.status === "paid").length
     const uniqueDonors = new Set(
-      payments.map((p) => (typeof p.donor === "string" ? p.donor : p.donor?._id || "")).filter(Boolean)
+      payments
+        .map((p) => (typeof p.donor === "string" ? p.donor : p.donor?._id || ""))
+        .filter(Boolean)
     ).size
 
     return {
       totalAmount,
       paidRows,
       uniqueDonors,
-      totalDonors: donors.length,
+      totalPayments: payments.length,
     }
-  }, [payments, donors.length])
+  }, [payments])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // === DONOR HANDLERS ===
+  const handleAddOrUpdateDonor = async (e: React.FormEvent) => {
     e.preventDefault()
-    setAddError("")
-    setAdding(true)
+    setDonorError("")
+    setSavingDonor(true)
     const isEditMode = !!editingDonorId
     const endpoint = isEditMode ? `/api/donors/${editingDonorId}` : "/api/donors"
     const method = isEditMode ? "PUT" : "POST"
@@ -249,23 +288,34 @@ export default function DonorsPage() {
 
     const data = await res.json()
     if (!res.ok) {
-      setAddError(data?.error || (isEditMode ? "Failed to update donor" : "Failed to create donor"))
-      setAdding(false)
+      setDonorError(
+        data?.error ||
+          (isEditMode ? "Failed to update donor" : "Failed to create donor")
+      )
+      setSavingDonor(false)
       return
     }
 
-    setIsAddOpen(false)
-    setEditingDonorId(null)
-    setFormData({ name: "", email: "", phone: "", cnic: "", address: "", city: "", status: "active", monthlyAmount: "1000", notes: "" })
-    setAdding(false)
-    setAddError("")
-    setError("")
+    resetDonorForm()
+    setSavingDonor(false)
+    setDonorSuccess(
+      isEditMode ? "Donor updated successfully!" : "Donor added successfully!"
+    )
     await loadDonors()
+    setTimeout(() => setDonorSuccess(""), 3000)
   }
 
-  const handleEditClick = (donor: DonorItem) => {
+  const handleEditDonor = (donor: DonorItem) => {
+    // Show password modal first
+    setPendingAction({ type: "edit_donor", data: donor })
+    setIsPasswordModalOpen(true)
+    setPasswordInput("")
+    setPasswordError("")
+  }
+
+  const handleConfirmedEditDonor = (donor: DonorItem) => {
     setEditingDonorId(donor._id)
-    setAddError("")
+    setDonorError("")
     setFormData({
       name: donor.name,
       email: donor.email || "",
@@ -277,15 +327,20 @@ export default function DonorsPage() {
       monthlyAmount: String(donor.monthlyAmount || 1000),
       notes: donor.notes || "",
     })
-    setIsAddOpen(true)
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  const handleDelete = async (donor: DonorItem) => {
-    const ok = window.confirm(`Delete donor ${donor.name}? This marks donor as inactive.`)
-    if (!ok) return
+  const handleDeleteDonor = (donor: DonorItem) => {
+    // Show password modal first
+    setPendingAction({ type: "delete_donor", data: donor })
+    setIsPasswordModalOpen(true)
+    setPasswordInput("")
+    setPasswordError("")
+  }
 
+  const handleConfirmedDeleteDonor = async (donor: DonorItem) => {
     setDeletingDonorId(donor._id)
-    setError("")
+    setDonorError("")
 
     const res = await fetch(`/api/donors/${donor._id}`, {
       method: "DELETE",
@@ -293,16 +348,43 @@ export default function DonorsPage() {
     const data = await res.json()
 
     if (!res.ok) {
-      setError(data?.error || "Failed to delete donor")
+      setDonorError(data?.error || "Failed to delete donor")
       setDeletingDonorId("")
       return
     }
 
     setDeletingDonorId("")
+    setDonorSuccess("Donor deleted successfully!")
     await loadDonors()
+    setTimeout(() => setDonorSuccess(""), 3000)
   }
 
+  const resetDonorForm = () => {
+    setEditingDonorId(null)
+    setFormData({
+      name: "",
+      email: "",
+      phone: "",
+      cnic: "",
+      address: "",
+      city: "",
+      status: "active",
+      monthlyAmount: "1000",
+      notes: "",
+    })
+    setDonorError("")
+  }
+
+  // === PAYMENT HANDLERS ===
   const handleEditPayment = (payment: PaymentItem) => {
+    // Show password modal first
+    setPendingAction({ type: "edit_payment", data: payment })
+    setIsPasswordModalOpen(true)
+    setPasswordInput("")
+    setPasswordError("")
+  }
+
+  const handleConfirmedEditPayment = (payment: PaymentItem) => {
     setEditingPaymentId(payment._id)
     setEditPaymentError("")
     setEditingPaymentData({
@@ -317,10 +399,15 @@ export default function DonorsPage() {
     setIsEditPaymentOpen(true)
   }
 
-  const handleDeletePayment = async (payment: PaymentItem) => {
-    const ok = window.confirm(`Delete payment ${payment.paymentId}?`)
-    if (!ok) return
+  const handleDeletePayment = (payment: PaymentItem) => {
+    // Show password modal first
+    setPendingAction({ type: "delete_payment", data: payment })
+    setIsPasswordModalOpen(true)
+    setPasswordInput("")
+    setPasswordError("")
+  }
 
+  const handleConfirmedDeletePayment = async (payment: PaymentItem) => {
     setDeletingPaymentId(payment._id)
 
     const res = await fetch(`/api/payments/${payment._id}`, {
@@ -335,12 +422,13 @@ export default function DonorsPage() {
     }
 
     setDeletingPaymentId("")
-    setEntrySuccess("Payment deleted successfully")
-    if (filterMode === "month") {
+    setEntrySuccess("Payment deleted successfully!")
+    if (paymentFilterMode === "month") {
       await loadPayments({ month: paymentMonth, year: paymentYear })
     } else if (fromDate || toDate) {
       await loadPayments({ fromDate, toDate })
     }
+    setTimeout(() => setEntrySuccess(""), 3000)
   }
 
   const handlePaymentEditSubmit = async () => {
@@ -383,12 +471,13 @@ export default function DonorsPage() {
     })
     setSavingPayment(false)
     setEditPaymentError("")
-    setEntrySuccess("Payment updated successfully")
-    if (filterMode === "month") {
+    setEntrySuccess("Payment updated successfully!")
+    if (paymentFilterMode === "month") {
       await loadPayments({ month: paymentMonth, year: paymentYear })
     } else if (fromDate || toDate) {
       await loadPayments({ fromDate, toDate })
     }
+    setTimeout(() => setEntrySuccess(""), 3000)
   }
 
   const handleEntrySubmit = async () => {
@@ -422,254 +511,1017 @@ export default function DonorsPage() {
 
     const data = await res.json()
     if (!res.ok) {
-      setEntryError(data?.error || "Failed to save payment row")
+      setEntryError(data?.error || "Failed to save payment")
       setEntrySaving(false)
       return
     }
 
     const createdCount = Number(data?.createdCount || 1)
+    setEntrySuccess(
+      createdCount > 1
+        ? `${createdCount} payment rows saved!`
+        : "Payment saved successfully!"
+    )
     if (createdCount > 1) {
-      setEntrySuccess(`${createdCount} payment rows saved with split logic`)
       window.alert(`${createdCount} payment rows saved successfully.`)
-    } else {
-      setEntrySuccess("Payment row saved")
-      window.alert("Payment saved successfully.")
     }
     setEntryData((prev) => ({ ...prev, notes: "" }))
-    if (filterMode === "month") {
+    if (paymentFilterMode === "month") {
       await loadPayments({ month: paymentMonth, year: paymentYear })
     } else if (fromDate || toDate) {
       await loadPayments({ fromDate, toDate })
     }
     setEntrySaving(false)
+    setTimeout(() => setEntrySuccess(""), 3000)
+  }
+
+  // === PASSWORD VERIFICATION ===
+  const handleVerifyPassword = async () => {
+    if (!passwordInput.trim()) {
+      setPasswordError("Password is required")
+      return
+    }
+
+    setVerifyingPassword(true)
+    setPasswordError("")
+
+    const res = await fetch("/api/auth/verify-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user?.id,
+        password: passwordInput,
+      }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      setPasswordError(data?.error || "Password verification failed")
+      setVerifyingPassword(false)
+      return
+    }
+
+    // Password verified, proceed with the pending action
+    setVerifyingPassword(false)
+    setIsPasswordModalOpen(false)
+    setPasswordInput("")
+    setPasswordError("")
+
+    if (!pendingAction) return
+
+    if (pendingAction.type === "delete_donor" && pendingAction.data) {
+      await handleConfirmedDeleteDonor(pendingAction.data as DonorItem)
+    } else if (pendingAction.type === "edit_donor" && pendingAction.data) {
+      handleConfirmedEditDonor(pendingAction.data as DonorItem)
+    } else if (pendingAction.type === "delete_payment" && pendingAction.data) {
+      await handleConfirmedDeletePayment(pendingAction.data as PaymentItem)
+    } else if (pendingAction.type === "edit_payment" && pendingAction.data) {
+      handleConfirmedEditPayment(pendingAction.data as PaymentItem)
+    }
+
+    setPendingAction(null)
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Donors</h1>
-          <p className="text-muted-foreground">Manage database-backed donor records.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            className="w-full sm:w-auto"
-            variant={viewMode === "donations" ? "default" : "outline"}
-            onClick={() => setViewMode("donations")}
-          >
-            Donations View
-          </Button>
-          <Button
-            type="button"
-            className="w-full sm:w-auto"
-            variant={viewMode === "donors" ? "default" : "outline"}
-            onClick={() => setViewMode("donors")}
-          >
-            Donor List
-          </Button>
-          {canCreate && (
-            <Button
-              type="button"
-              className="w-full sm:w-auto"
-              onClick={() => {
-                setEditingDonorId(null)
-                setAddError("")
-                setFormData({ name: "", email: "", phone: "", cnic: "", address: "", city: "", status: "active", monthlyAmount: "1000", notes: "" })
-                setIsAddOpen(true)
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Donor
-            </Button>
-          )}
-        </div>
+    <div className="space-y-4 sm:space-y-6">
+      {/* PAGE HEADER */}
+      <div className="flex flex-col gap-1 sm:gap-2">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Donors Management</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground">
+          Manage donors, record payments, and view donation history
+        </p>
       </div>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {/* MAIN TABS */}
+      <Tabs defaultValue="donor-list" className="w-full">
+        <TabsList className="grid w-full grid-cols-4 gap-0.5 sm:gap-1 p-1 sm:p-2">
+          <TabsTrigger value="donor-list" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+            <Users className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+            <span className="hidden sm:inline">Donor List</span>
+            <span className="sm:hidden">List</span>
+          </TabsTrigger>
+          <TabsTrigger value="add-donor" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+            <Plus className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+            <span className="hidden sm:inline">Add Donor</span>
+            <span className="sm:hidden">Add</span>
+          </TabsTrigger>
+          <TabsTrigger value="payment-form" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+            <DollarSign className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+            <span className="hidden sm:inline">Payment Form</span>
+            <span className="sm:hidden">Pay</span>
+          </TabsTrigger>
+          <TabsTrigger value="donations" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3">
+            <Eye className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+            <span className="hidden sm:inline">Donations</span>
+            <span className="sm:hidden">View</span>
+          </TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
-            <div className="flex-1">
-              <Input placeholder="Search by name, ID, or email..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterMode} onValueChange={(value: "month" | "range") => setFilterMode(value)}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Donation Filter" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="month">Current/Selected Month</SelectItem>
-                <SelectItem value="range">Date Range</SelectItem>
-              </SelectContent>
-            </Select>
-            {filterMode === "month" ? (
-              <div className="grid grid-cols-2 gap-2">
+        {/* TAB 1: DONOR LIST */}
+        <TabsContent value="donor-list" className="space-y-3 sm:space-y-4">
+          <Card className="border-0 sm:border">
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="text-lg sm:text-2xl">Donor List</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                View and manage all donors in the system
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 sm:space-y-4">
+              {donorSuccess && (
+                <div className="rounded-md bg-green-50 p-2 sm:p-3 text-xs sm:text-sm text-green-800">
+                  {donorSuccess}
+                </div>
+              )}
+              {donorError && (
+                <div className="rounded-md bg-red-50 p-2 sm:p-3 text-xs sm:text-sm text-red-800">
+                  {donorError}
+                </div>
+              )}
+
+              {/* FILTERS */}
+              <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2">
                 <Input
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={paymentMonth}
-                  onChange={(e) => setPaymentMonth(e.target.value)}
-                  placeholder="Month"
+                  placeholder="Search by name, ID, or email..."
+                  value={donorSearch}
+                  onChange={(e) => setDonorSearch(e.target.value)}
                 />
-                <Input
-                  type="number"
-                  min={2000}
-                  max={2100}
-                  value={paymentYear}
-                  onChange={(e) => setPaymentYear(e.target.value)}
-                  placeholder="Year"
-                />
+                <Select value={donorStatusFilter} onValueChange={setDonorStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active Only</SelectItem>
+                    <SelectItem value="inactive">Inactive Only</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-                <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">All Donors Summary</CardTitle>
-          <CardDescription>
-            {filterMode === "month"
-              ? `Donation totals for ${paymentMonth}/${paymentYear}`
-              : "Donation totals for selected date range"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Total Donors</p>
-              <p className="text-xl font-semibold">{donationsSummary.totalDonors}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Donors Donated</p>
-              <p className="text-xl font-semibold">{donationsSummary.uniqueDonors}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Paid Rows</p>
-              <p className="text-xl font-semibold">{donationsSummary.paidRows}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Donation</p>
-              <p className="text-xl font-semibold text-primary">{formatPKR(donationsSummary.totalAmount)}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">All Donors Donations</CardTitle>
-          <CardDescription>
-            {filterMode === "month"
-              ? `Showing all donor donations for ${paymentMonth}/${paymentYear}`
-              : "Showing all donor donations in selected date range"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="space-y-3 p-3 md:hidden">
-            {paymentsLoading ? (
-              <div className="rounded-md border p-4 text-sm text-muted-foreground">Loading donations...</div>
-            ) : payments.length === 0 ? (
-              <div className="rounded-md border p-4 text-sm text-muted-foreground">No donations found for current filter.</div>
-            ) : (
-              payments.map((payment) => {
-                const donorName = typeof payment.donor === "string"
-                  ? payment.donor
-                  : `${payment.donor?.donorId || ""} ${payment.donor?.name || ""}`.trim() || "-"
-                return (
-                  <div key={payment._id} className="rounded-md border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">{payment.paymentId}</p>
-                      <Badge variant={payment.status === "paid" ? "default" : "secondary"}>{payment.status}</Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{donorName}</p>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      <p>Period: {payment.month}/{payment.year}</p>
-                      <p>Method: {payment.method}</p>
-                    </div>
-                    <p className="mt-2 text-sm font-semibold text-primary">{formatPKR(payment.amount)}</p>
-                    {(canEdit || canDelete) && (
-                      <div className="mt-3 flex gap-2">
-                        {canEdit && (
-                          <Button size="sm" variant="outline" onClick={() => handleEditPayment(payment)}>
-                            <Pencil className="mr-1 h-3.5 w-3.5" />
-                            Edit
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={deletingPaymentId === payment._id}
-                            onClick={() => handleDeletePayment(payment)}
+              {/* DONOR TABLE */}
+              <div className="rounded-md border overflow-hidden -mx-6 sm:mx-0">
+                <div className="hidden md:block overflow-x-auto">
+                  <Table className="text-sm">
+                    <TableHeader>
+                      <TableRow className="bg-muted">
+                        <TableHead>Donor ID</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>City</TableHead>
+                        <TableHead>Monthly</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredDonors.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={7}
+                            className="h-24 text-center text-muted-foreground"
                           >
-                            <Trash2 className="mr-1 h-3.5 w-3.5" />
-                            {deletingPaymentId === payment._id ? "Deleting..." : "Delete"}
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
+                            No donors found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredDonors.map((donor) => (
+                          <TableRow key={donor._id} className="hover:bg-muted/50">
+                            <TableCell className="font-medium text-primary">
+                              {donor.donorId}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {donor.name}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <div>{donor.phone}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {donor.email || "-"}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {donor.city || "-"}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {formatPKR(donor.monthlyAmount)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  donor.status === "active"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {donor.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                {canEdit && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleEditDonor(donor)}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {canDelete && (
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={deletingDonorId === donor._id}
+                                    onClick={() => handleDeleteDonor(donor)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
 
-          <div className="hidden overflow-x-auto md:block">
-            <Table className="min-w-[760px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Payment ID</TableHead>
-                  <TableHead>Donor</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paymentsLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-16 text-center text-muted-foreground">Loading donations...</TableCell>
-                  </TableRow>
-                ) : payments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-16 text-center text-muted-foreground">No donations found for current filter.</TableCell>
-                  </TableRow>
+                {/* MOBILE VIEW */}
+                <div className="md:hidden space-y-2 p-4">
+                  {filteredDonors.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No donors found
+                    </div>
+                  ) : (
+                    filteredDonors.map((donor) => (
+                      <div
+                        key={donor._id}
+                        className="rounded-md border p-2 sm:p-3 space-y-2"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-bold text-primary">
+                              {donor.donorId}
+                            </p>
+                            <p className="font-medium">{donor.name}</p>
+                          </div>
+                          <Badge
+                            variant={
+                              donor.status === "active"
+                                ? "default"
+                                : "secondary"
+                            }
+                          >
+                            {donor.status}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {donor.phone} • {donor.email || "-"}
+                        </p>
+                        <p className="text-sm font-semibold">
+                          {formatPKR(donor.monthlyAmount)}
+                        </p>
+                        <div className="flex gap-2 pt-2">
+                          {canEdit && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => handleEditDonor(donor)}
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="flex-1"
+                              disabled={deletingDonorId === donor._id}
+                              onClick={() => handleDeleteDonor(donor)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground pt-2 px-0.5 sm:px-0">
+                Total: {filteredDonors.length} donor{filteredDonors.length !== 1 ? "s" : ""}
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 2: ADD DONOR */}
+        <TabsContent value="add-donor" className="space-y-3 sm:space-y-4">
+          <Card className="border-0 sm:border">
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="text-lg sm:text-2xl">
+                {editingDonorId ? "Edit Donor" : "Add New Donor"}
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                {editingDonorId
+                  ? "Update donor information"
+                  : "Register a new donor in the system"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {donorSuccess && (
+                <div className="rounded-md bg-green-50 p-2 sm:p-3 text-xs sm:text-sm text-green-800 mb-3 sm:mb-4">
+                  {donorSuccess}
+                </div>
+              )}
+              {donorError && (
+                <div className="rounded-md bg-red-50 p-2 sm:p-3 text-xs sm:text-sm text-red-800 mb-3 sm:mb-4">
+                  {donorError}
+                </div>
+              )}
+
+              <form onSubmit={handleAddOrUpdateDonor} className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="name">Full Name *</FieldLabel>
+                    <Input
+                      id="name"
+                      placeholder="Enter donor name"
+                      value={formData.name}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="phone">Phone Number *</FieldLabel>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="03xx-xxxxxxx"
+                      value={formData.phone}
+                      onChange={(e) =>
+                        setFormData({ ...formData, phone: e.target.value })
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="email">Email</FieldLabel>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="donor@example.com"
+                      value={formData.email}
+                      onChange={(e) =>
+                        setFormData({ ...formData, email: e.target.value })
+                      }
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="cnic">CNIC</FieldLabel>
+                    <Input
+                      id="cnic"
+                      placeholder="12345-1234567-1"
+                      value={formData.cnic}
+                      onChange={(e) =>
+                        setFormData({ ...formData, cnic: e.target.value })
+                      }
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="address">Address</FieldLabel>
+                    <Input
+                      id="address"
+                      placeholder="Street address"
+                      value={formData.address}
+                      onChange={(e) =>
+                        setFormData({ ...formData, address: e.target.value })
+                      }
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="city">City</FieldLabel>
+                    <Input
+                      id="city"
+                      placeholder="City name"
+                      value={formData.city}
+                      onChange={(e) =>
+                        setFormData({ ...formData, city: e.target.value })
+                      }
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="amount">Monthly Amount (PKR) *</FieldLabel>
+                    <Input
+                      id="amount"
+                      type="number"
+                      placeholder="1000"
+                      value={formData.monthlyAmount}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          monthlyAmount: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="status">Status</FieldLabel>
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value: "active" | "inactive") =>
+                        setFormData({ ...formData, status: value })
+                      }
+                    >
+                      <SelectTrigger id="status">
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+
+                <Field>
+                  <FieldLabel htmlFor="notes">Notes</FieldLabel>
+                  <Input
+                    id="notes"
+                    placeholder="Any additional notes"
+                    value={formData.notes}
+                    onChange={(e) =>
+                      setFormData({ ...formData, notes: e.target.value })
+                    }
+                  />
+                </Field>
+
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
+                  <Button type="submit" disabled={savingDonor} className="flex-1 text-sm sm:text-base h-9 sm:h-10">
+                    {savingDonor ? (
+                      <>Loading...</>
+                    ) : editingDonorId ? (
+                      <>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Update Donor
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Donor
+                      </>
+                    )}
+                  </Button>
+                  {editingDonorId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={resetDonorForm}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 3: PAYMENT FORM */}
+        <TabsContent value="payment-form" className="space-y-3 sm:space-y-4">
+          <Card className="border-0 sm:border">
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="text-lg sm:text-2xl">Payment Entry Form</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                Record a new payment for any donor
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 sm:space-y-4">
+              {entryError && (
+                <div className="rounded-md bg-red-50 p-2 sm:p-3 text-xs sm:text-sm text-red-800">
+                  {entryError}
+                </div>
+              )}
+              {entrySuccess && (
+                <div className="rounded-md bg-green-50 p-2 sm:p-3 text-xs sm:text-sm text-green-800">
+                  {entrySuccess}
+                </div>
+              )}
+
+              <div className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="donor">Select Donor *</FieldLabel>
+                    <Popover open={isPaymentDonorOpen} onOpenChange={setIsPaymentDonorOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={isPaymentDonorOpen}
+                          className="w-full justify-between"
+                        >
+                          {entryData.donorId
+                            ? donors.find((d) => d._id === entryData.donorId)?.donorId +
+                              " - " +
+                              donors.find((d) => d._id === entryData.donorId)?.name
+                            : "Choose a donor..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                        <Command shouldFilter={false}>
+                          <CommandInput
+                            placeholder="Search donor by name, ID, email, or phone..."
+                            value={paymentDonorSearch}
+                            onValueChange={setPaymentDonorSearch}
+                          />
+                          <CommandEmpty>No donor found.</CommandEmpty>
+                          <ScrollArea className="h-64">
+                            <CommandGroup>
+                              {filteredPaymentDonors.map((donor) => (
+                                <CommandItem
+                                  key={donor._id}
+                                  value={donor._id}
+                                  onSelect={(currentValue) => {
+                                    setEntryData((prev) => ({
+                                      ...prev,
+                                      donorId: currentValue,
+                                      amount: String(donor.monthlyAmount || prev.amount),
+                                    }))
+                                    setPaymentDonorSearch("")
+                                    setIsPaymentDonorOpen(false)
+                                  }}
+                                >
+                                  <Check
+                                    className={`mr-2 h-4 w-4 ${
+                                      entryData.donorId === donor._id ? "opacity-100" : "opacity-0"
+                                    }`}
+                                  />
+                                  <div className="flex-1">
+                                    <div className="font-medium">{donor.donorId} - {donor.name}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {donor.phone} • {donor.email || "-"}
+                                    </div>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </ScrollArea>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="amount">Amount (PKR) *</FieldLabel>
+                    <Input
+                      id="amount"
+                      type="number"
+                      placeholder="0"
+                      value={entryData.amount}
+                      onChange={(e) =>
+                        setEntryData((prev) => ({
+                          ...prev,
+                          amount: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="month">Month *</FieldLabel>
+                    <Input
+                      id="month"
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={entryData.month}
+                      onChange={(e) =>
+                        setEntryData((prev) => ({
+                          ...prev,
+                          month: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="year">Year *</FieldLabel>
+                    <Input
+                      id="year"
+                      type="number"
+                      min="2000"
+                      max="2100"
+                      value={entryData.year}
+                      onChange={(e) =>
+                        setEntryData((prev) => ({
+                          ...prev,
+                          year: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="method">Payment Method *</FieldLabel>
+                    <Select
+                      value={entryData.method}
+                      onValueChange={(
+                        value: "cash" | "bank_transfer" | "easypaisa" | "jazzcash"
+                      ) =>
+                        setEntryData((prev) => ({ ...prev, method: value }))
+                      }
+                    >
+                      <SelectTrigger id="method">
+                        <SelectValue placeholder="Choose method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                        <SelectItem value="easypaisa">EasyPaisa</SelectItem>
+                        <SelectItem value="jazzcash">JazzCash</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="received-by">Received By</FieldLabel>
+                    <Input
+                      id="received-by"
+                      placeholder="Officer name"
+                      value={entryData.receivedBy}
+                      onChange={(e) =>
+                        setEntryData((prev) => ({
+                          ...prev,
+                          receivedBy: e.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                </div>
+
+                <Field>
+                  <FieldLabel htmlFor="notes">Notes</FieldLabel>
+                  <Input
+                    id="notes"
+                    placeholder="Any additional notes"
+                    value={entryData.notes}
+                    onChange={(e) =>
+                      setEntryData((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                  />
+                </Field>
+
+                <div className="space-y-2 sm:space-y-3 pt-2">
+                  <Label className="text-sm sm:text-base font-semibold">
+                    Payment Type Options
+                  </Label>
+                  <div className="flex flex-col gap-2 sm:gap-3 md:flex-row">
+                    <Label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={entryData.is_previous}
+                        onCheckedChange={(checked) =>
+                          setEntryData((prev) => ({
+                            ...prev,
+                            is_previous: Boolean(checked),
+                            is_advance: Boolean(checked) ? false : prev.is_advance,
+                          }))
+                        }
+                      />
+                      <span className="text-sm">
+                        Previous Month(s) Payment
+                      </span>
+                    </Label>
+                    <Label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={entryData.is_advance}
+                        onCheckedChange={(checked) =>
+                          setEntryData((prev) => ({
+                            ...prev,
+                            is_advance: Boolean(checked),
+                            is_previous: Boolean(checked) ? false : prev.is_previous,
+                          }))
+                        }
+                      />
+                      <span className="text-sm">Advance Payment</span>
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Check if this payment should be split across months
+                  </p>
+                </div>
+
+                <Button
+                  onClick={handleEntrySubmit}
+                  disabled={entrySaving}
+                  className="w-full md:w-auto text-sm sm:text-base h-9 sm:h-10"
+                >
+                  {entrySaving ? "Saving..." : "Save Payment"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 4: DONATIONS VIEW */}
+        <TabsContent value="donations" className="space-y-3 sm:space-y-4">
+          <Card className="border-0 sm:border">
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="text-lg sm:text-2xl">Donations View</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">View and manage all payment records</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 sm:space-y-4">
+              {/* FILTER SECTION */}
+              <div className="bg-muted p-3 sm:p-4 rounded-md space-y-3 sm:space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                  <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Filter by:</span>
+                  <div className="flex gap-1 sm:gap-2">
+                    <Button
+                      size="sm"
+                      variant={
+                        paymentFilterMode === "month" ? "default" : "outline"
+                      }
+                      onClick={() => setPaymentFilterMode("month")}
+                      className="text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
+                    >
+                      Month
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={
+                        paymentFilterMode === "range" ? "default" : "outline"
+                      }
+                      onClick={() => setPaymentFilterMode("range")}
+                      className="text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
+                    >
+                      Date Range
+                    </Button>
+                  </div>
+                </div>
+
+                {paymentFilterMode === "month" ? (
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 md:max-w-md">
+                    <Field>
+                      <FieldLabel htmlFor="filter-month" className="text-xs">
+                        Month
+                      </FieldLabel>
+                      <Input
+                        id="filter-month"
+                        type="number"
+                        min="1"
+                        max="12"
+                        value={paymentMonth}
+                        onChange={(e) => setPaymentMonth(e.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="filter-year" className="text-xs">
+                        Year
+                      </FieldLabel>
+                      <Input
+                        id="filter-year"
+                        type="number"
+                        min="2000"
+                        max="2100"
+                        value={paymentYear}
+                        onChange={(e) => setPaymentYear(e.target.value)}
+                      />
+                    </Field>
+                  </div>
                 ) : (
-                  payments.map((payment) => {
-                    const donorName = typeof payment.donor === "string"
-                      ? payment.donor
-                      : `${payment.donor?.donorId || ""} ${payment.donor?.name || ""}`.trim() || "-"
-                    return (
-                      <TableRow key={payment._id}>
-                        <TableCell className="font-medium">{payment.paymentId}</TableCell>
-                        <TableCell>{donorName}</TableCell>
-                        <TableCell>{payment.month}/{payment.year}</TableCell>
-                        <TableCell>{formatPKR(payment.amount)}</TableCell>
-                        <TableCell>{payment.method}</TableCell>
-                        <TableCell>
-                          <Badge variant={payment.status === "paid" ? "default" : "secondary"}>{payment.status}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="inline-flex gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 md:max-w-md">
+                    <Field>
+                      <FieldLabel htmlFor="from-date" className="text-xs">
+                        From
+                      </FieldLabel>
+                      <Input
+                        id="from-date"
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="to-date" className="text-xs">
+                        To
+                      </FieldLabel>
+                      <Input
+                        id="to-date"
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
+
+              {/* SUMMARY CARDS */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
+                <div className="rounded-md border p-2 sm:p-3">
+                  <p className="text-xs text-muted-foreground">Total Amount</p>
+                  <p className="text-base sm:text-lg font-bold text-primary">
+                    {formatPKR(paymentsSummary.totalAmount)}
+                  </p>
+                </div>
+                <div className="rounded-md border p-2 sm:p-3">
+                  <p className="text-xs text-muted-foreground">Paid Records</p>
+                  <p className="text-base sm:text-lg font-bold">{paymentsSummary.paidRows}</p>
+                </div>
+                <div className="rounded-md border p-2 sm:p-3">
+                  <p className="text-xs text-muted-foreground">Unique Donors</p>
+                  <p className="text-base sm:text-lg font-bold">{paymentsSummary.uniqueDonors}</p>
+                </div>
+                <div className="rounded-md border p-2 sm:p-3">
+                  <p className="text-xs text-muted-foreground">Total Records</p>
+                  <p className="text-base sm:text-lg font-bold">{paymentsSummary.totalPayments}</p>
+                </div>
+              </div>
+
+              {/* PAYMENTS TABLE */}
+              <div className="rounded-md border overflow-hidden -mx-6 sm:mx-0">
+                <div className="hidden md:block overflow-x-auto">
+                  <Table className="text-sm">
+                    <TableHeader>
+                      <TableRow className="bg-muted">
+                        <TableHead>Payment ID</TableHead>
+                        <TableHead>Donor</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Method</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paymentsLoading ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={7}
+                            className="h-12 text-center text-muted-foreground"
+                          >
+                            Loading...
+                          </TableCell>
+                        </TableRow>
+                      ) : payments.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={7}
+                            className="h-24 text-center text-muted-foreground"
+                          >
+                            No donations found
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        payments.map((payment) => {
+                          const donorName =
+                            typeof payment.donor === "string"
+                              ? payment.donor
+                              : `${payment.donor?.donorId || ""} ${
+                                  payment.donor?.name || ""
+                                }`.trim() || "-"
+                          return (
+                            <TableRow
+                              key={payment._id}
+                              className="hover:bg-muted/50"
+                            >
+                              <TableCell className="font-medium text-primary">
+                                {payment.paymentId}
+                              </TableCell>
+                              <TableCell>{donorName}</TableCell>
+                              <TableCell className="text-sm">
+                                {payment.month}/{payment.year}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {formatPKR(payment.amount)}
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {payment.method}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    payment.status === "paid"
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                >
+                                  {payment.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  {canEdit && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        handleEditPayment(payment)
+                                      }
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  {canDelete && (
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      disabled={
+                                        deletingPaymentId === payment._id
+                                      }
+                                      onClick={() =>
+                                        handleDeletePayment(payment)
+                                      }
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* MOBILE VIEW */}
+                <div className="md:hidden space-y-2 p-4">
+                  {paymentsLoading ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Loading...
+                    </div>
+                  ) : payments.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No donations found
+                    </div>
+                  ) : (
+                    payments.map((payment) => {
+                      const donorName =
+                        typeof payment.donor === "string"
+                          ? payment.donor
+                          : `${payment.donor?.donorId || ""} ${
+                              payment.donor?.name || ""
+                            }`.trim() || "-"
+                      return (
+                        <div
+                          key={payment._id}
+                          className="rounded-md border p-2 sm:p-3 space-y-2"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-bold text-primary">
+                                {payment.paymentId}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {donorName}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                payment.status === "paid"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                            >
+                              {payment.status}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground space-y-1">
+                            <p>
+                              Period: {payment.month}/{payment.year}
+                            </p>
+                            <p>Method: {payment.method}</p>
+                          </div>
+                          <p className="text-sm font-semibold text-primary">
+                            {formatPKR(payment.amount)}
+                          </p>
+                          <div className="flex gap-2 pt-2">
                             {canEdit && (
-                              <Button size="sm" variant="outline" onClick={() => handleEditPayment(payment)}>
-                                <Pencil className="mr-1 h-3.5 w-3.5" />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => handleEditPayment(payment)}
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
                                 Edit
                               </Button>
                             )}
@@ -677,382 +1529,53 @@ export default function DonorsPage() {
                               <Button
                                 size="sm"
                                 variant="destructive"
+                                className="flex-1"
                                 disabled={deletingPaymentId === payment._id}
                                 onClick={() => handleDeletePayment(payment)}
                               >
-                                <Trash2 className="mr-1 h-3.5 w-3.5" />
-                                {deletingPaymentId === payment._id ? "Deleting..." : "Delete"}
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
                               </Button>
                             )}
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {viewMode === "donors" ? (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Donor List</CardTitle>
-          <CardDescription>{filteredDonors.length} {filteredDonors.length === 1 ? "donor" : "donors"} found</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="space-y-3 p-3 md:hidden">
-            {filteredDonors.length === 0 ? (
-              <div className="rounded-md border p-4 text-sm text-muted-foreground">No donors found.</div>
-            ) : (
-              filteredDonors.map((donor) => (
-                <div key={donor._id} className="rounded-md border p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <Link href={`/dashboard/donors/${donor._id}`} className="text-sm font-semibold text-primary hover:underline">
-                        {donor.donorId}
-                      </Link>
-                      <p className="text-sm font-medium">{donor.name}</p>
-                    </div>
-                    <Badge variant={donor.status === "active" ? "default" : "secondary"}>{donor.status}</Badge>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{donor.phone} • {donor.email || "-"}</p>
-                  <p className="text-xs text-muted-foreground">{donor.city || "-"}</p>
-                  <p className="mt-2 text-sm font-semibold">{formatPKR(donor.monthlyAmount)}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setEntryData((prev) => ({
-                          ...prev,
-                          donorId: donor._id,
-                          amount: String(donor.monthlyAmount || prev.amount),
-                        }))
-                        setEntrySuccess(`Entry form ready for ${donor.name}`)
-                        setEntryError("")
-                      }}
-                    >
-                      Record Payment
-                    </Button>
-                    {canEdit ? (
-                      <Button size="sm" variant="outline" onClick={() => handleEditClick(donor)}>
-                        <Pencil className="mr-1 h-3.5 w-3.5" />
-                        Edit
-                      </Button>
-                    ) : null}
-                    {canDelete ? (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={deletingDonorId === donor._id}
-                        onClick={() => handleDelete(donor)}
-                      >
-                        <Trash2 className="mr-1 h-3.5 w-3.5" />
-                        {deletingDonorId === donor._id ? "Deleting..." : "Delete"}
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="hidden overflow-x-auto md:block">
-            <Table className="min-w-[980px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>City</TableHead>
-                  <TableHead>Monthly Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDonors.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="h-24 text-center text-muted-foreground">No donors found.</TableCell></TableRow>
-                ) : (
-                  filteredDonors.map((donor) => (
-                    <TableRow key={donor._id}>
-                      <TableCell className="font-medium">
-                        <Link href={`/dashboard/donors/${donor._id}`} className="hover:underline text-primary">
-                          {donor.donorId}
-                        </Link>
-                      </TableCell>
-                      <TableCell><p className="font-medium">{donor.name}</p></TableCell>
-                      <TableCell>
-                        <p className="text-sm">{donor.phone}</p>
-                        <p className="text-sm text-muted-foreground">{donor.email || "-"}</p>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{donor.city || "-"}</TableCell>
-                      <TableCell className="font-medium">{formatPKR(donor.monthlyAmount)}</TableCell>
-                      <TableCell>
-                        <Badge variant={donor.status === "active" ? "default" : "secondary"}>{donor.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="inline-flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setEntryData((prev) => ({
-                                ...prev,
-                                donorId: donor._id,
-                                amount: String(donor.monthlyAmount || prev.amount),
-                              }))
-                              setEntrySuccess(`Entry form ready for ${donor.name}`)
-                              setEntryError("")
-                            }}
-                          >
-                            Record Payment
-                          </Button>
-                          {canEdit ? (
-                            <Button size="sm" variant="outline" onClick={() => handleEditClick(donor)}>
-                              <Pencil className="mr-1 h-3.5 w-3.5" />
-                              Edit
-                            </Button>
-                          ) : null}
-                          {canDelete ? (
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              disabled={deletingDonorId === donor._id}
-                              onClick={() => handleDelete(donor)}
-                            >
-                              <Trash2 className="mr-1 h-3.5 w-3.5" />
-                              {deletingDonorId === donor._id ? "Deleting..." : "Delete"}
-                            </Button>
-                          ) : null}
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-      ) : null}
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Payment Entry Form</CardTitle>
-          <CardDescription>
-            Record payment as normal or split it across months using is_previous / is_advance.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {entryError ? <p className="text-sm text-destructive">{entryError}</p> : null}
-          {entrySuccess ? <p className="text-sm text-primary">{entrySuccess}</p> : null}
-
-          <div className="rounded-md border p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-2 xl:col-span-2">
-                <FieldLabel>Donor</FieldLabel>
-                <Select
-                  value={entryData.donorId}
-                  onValueChange={(value) => {
-                    const donor = donors.find((d) => d._id === value)
-                    setEntryData((prev) => ({
-                      ...prev,
-                      donorId: value,
-                      amount: String(donor?.monthlyAmount || prev.amount),
-                    }))
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select donor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {donors.map((donor) => (
-                      <SelectItem key={donor._id} value={donor._id}>
-                        {donor.donorId} - {donor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Month</FieldLabel>
-                <Input
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={entryData.month}
-                  onChange={(e) => setEntryData((prev) => ({ ...prev, month: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Year</FieldLabel>
-                <Input
-                  type="number"
-                  min={2000}
-                  max={2100}
-                  value={entryData.year}
-                  onChange={(e) => setEntryData((prev) => ({ ...prev, year: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Amount</FieldLabel>
-                <Input
-                  type="number"
-                  min={1}
-                  value={entryData.amount}
-                  onChange={(e) => setEntryData((prev) => ({ ...prev, amount: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Method</FieldLabel>
-                <Select
-                  value={entryData.method}
-                  onValueChange={(value: "cash" | "bank_transfer" | "easypaisa" | "jazzcash") =>
-                    setEntryData((prev) => ({ ...prev, method: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="easypaisa">EasyPaisa</SelectItem>
-                    <SelectItem value="jazzcash">JazzCash</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Received By</FieldLabel>
-                <Input
-                  value={entryData.receivedBy}
-                  onChange={(e) => setEntryData((prev) => ({ ...prev, receivedBy: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2 xl:col-span-2">
-                <FieldLabel>Notes</FieldLabel>
-                <Input
-                  value={entryData.notes}
-                  onChange={(e) => setEntryData((prev) => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Optional notes"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap gap-5">
-                <Label className="inline-flex items-center gap-2">
-                  <Checkbox
-                    checked={entryData.is_previous}
-                    onCheckedChange={(checked) =>
-                      setEntryData((prev) => ({
-                        ...prev,
-                        is_previous: Boolean(checked),
-                        is_advance: Boolean(checked) ? false : prev.is_advance,
-                      }))
-                    }
-                  />
-                  is_previous
-                </Label>
-                <Label className="inline-flex items-center gap-2">
-                  <Checkbox
-                    checked={entryData.is_advance}
-                    onCheckedChange={(checked) =>
-                      setEntryData((prev) => ({
-                        ...prev,
-                        is_advance: Boolean(checked),
-                        is_previous: Boolean(checked) ? false : prev.is_previous,
-                      }))
-                    }
-                  />
-                  is_advance
-                </Label>
-              </div>
-              <Button onClick={handleEntrySubmit} disabled={entrySaving}>
-                {entrySaving ? "Saving..." : "Save Payment"}
-              </Button>
-            </div>
-
-            <p className="mt-3 text-xs text-muted-foreground">
-              Split logic: if amount is multiple of donor monthly amount, is_previous splits backward to selected month,
-              and is_advance splits forward from selected month.
-            </p>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            This sheet records payments for selected donor, while the donations table above shows all donors by current filter.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Sheet open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <SheetContent className="sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{editingDonorId ? "Edit Donor" : "Add New Donor"}</SheetTitle>
-            <SheetDescription>{editingDonorId ? "Update donor details." : "Register a new donor in the database."}</SheetDescription>
-          </SheetHeader>
-          <form onSubmit={handleSubmit} className="mt-6">
-            <FieldGroup>
-              {addError ? <p className="text-sm text-destructive">{addError}</p> : null}
-              <Field><FieldLabel htmlFor="name">Full Name</FieldLabel><Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required /></Field>
-              <Field><FieldLabel htmlFor="email">Email</FieldLabel><Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} /></Field>
-              <Field><FieldLabel htmlFor="phone">Phone Number</FieldLabel><Input id="phone" type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} required /></Field>
-              <Field><FieldLabel htmlFor="cnic">CNIC</FieldLabel><Input id="cnic" value={formData.cnic} onChange={(e) => setFormData({ ...formData, cnic: e.target.value })} placeholder="12345-1234567-1" /></Field>
-              <Field><FieldLabel htmlFor="address">Address</FieldLabel><Input id="address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} /></Field>
-              <Field><FieldLabel htmlFor="city">City</FieldLabel><Input id="city" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} /></Field>
-              <Field>
-                <FieldLabel htmlFor="status">Status</FieldLabel>
-                <Select value={formData.status} onValueChange={(value: "active" | "inactive") => setFormData({ ...formData, status: value })}>
-                  <SelectTrigger id="status"><SelectValue placeholder="Status" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field><FieldLabel htmlFor="allocation">Monthly Amount (PKR)</FieldLabel><Input id="allocation" type="number" value={formData.monthlyAmount} onChange={(e) => setFormData({ ...formData, monthlyAmount: e.target.value })} required /></Field>
-              <Field><FieldLabel htmlFor="notes">Notes</FieldLabel><Input id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} /></Field>
-              <div className="flex gap-3 pt-4">
-                <Button type="submit" className="flex-1" disabled={adding}>
-                  {adding ? (editingDonorId ? "Updating..." : "Adding...") : (editingDonorId ? "Update Donor" : "Add Donor")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setIsAddOpen(false)
-                    setEditingDonorId(null)
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </FieldGroup>
-          </form>
-        </SheetContent>
-      </Sheet>
-
+      {/* EDIT PAYMENT SHEET */}
       <Sheet open={isEditPaymentOpen} onOpenChange={setIsEditPaymentOpen}>
-        <SheetContent className="sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Edit Payment</SheetTitle>
-            <SheetDescription>Update payment details.</SheetDescription>
+            <SheetTitle className="text-lg sm:text-xl">Edit Payment</SheetTitle>
+            <SheetDescription className="text-xs sm:text-sm">Update payment details</SheetDescription>
           </SheetHeader>
-          <div className="mt-6 space-y-4">
-            {editPaymentError ? <p className="text-sm text-destructive">{editPaymentError}</p> : null}
+          <div className="mt-4 sm:mt-6 space-y-3 sm:space-y-4">
+            {editPaymentError && (
+              <div className="rounded-md bg-red-50 p-2 sm:p-3 text-xs sm:text-sm text-red-800">
+                {editPaymentError}
+              </div>
+            )}
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="edit-amount">Amount (PKR)</FieldLabel>
                 <Input
                   id="edit-amount"
                   type="number"
-                  min={1}
+                  min="1"
                   value={editingPaymentData.amount}
-                  onChange={(e) => setEditingPaymentData({ ...editingPaymentData, amount: e.target.value })} 
+                  onChange={(e) =>
+                    setEditingPaymentData({
+                      ...editingPaymentData,
+                      amount: e.target.value,
+                    })
+                  }
                 />
               </Field>
               <Field>
@@ -1060,10 +1583,15 @@ export default function DonorsPage() {
                 <Input
                   id="edit-month"
                   type="number"
-                  min={1}
-                  max={12}
+                  min="1"
+                  max="12"
                   value={editingPaymentData.month}
-                  onChange={(e) => setEditingPaymentData({ ...editingPaymentData, month: e.target.value })}
+                  onChange={(e) =>
+                    setEditingPaymentData({
+                      ...editingPaymentData,
+                      month: e.target.value,
+                    })
+                  }
                 />
               </Field>
               <Field>
@@ -1071,21 +1599,33 @@ export default function DonorsPage() {
                 <Input
                   id="edit-year"
                   type="number"
-                  min={2000}
-                  max={2100}
+                  min="2000"
+                  max="2100"
                   value={editingPaymentData.year}
-                  onChange={(e) => setEditingPaymentData({ ...editingPaymentData, year: e.target.value })}
+                  onChange={(e) =>
+                    setEditingPaymentData({
+                      ...editingPaymentData,
+                      year: e.target.value,
+                    })
+                  }
                 />
               </Field>
               <Field>
                 <FieldLabel htmlFor="edit-method">Method</FieldLabel>
                 <Select
                   value={editingPaymentData.method}
-                  onValueChange={(value: "cash" | "bank_transfer" | "easypaisa" | "jazzcash") =>
-                    setEditingPaymentData({ ...editingPaymentData, method: value })
+                  onValueChange={(
+                    value: "cash" | "bank_transfer" | "easypaisa" | "jazzcash"
+                  ) =>
+                    setEditingPaymentData({
+                      ...editingPaymentData,
+                      method: value,
+                    })
                   }
                 >
-                  <SelectTrigger id="edit-method"><SelectValue placeholder="Method" /></SelectTrigger>
+                  <SelectTrigger id="edit-method">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
@@ -1099,10 +1639,15 @@ export default function DonorsPage() {
                 <Select
                   value={editingPaymentData.status}
                   onValueChange={(value: "paid" | "pending" | "missed") =>
-                    setEditingPaymentData({ ...editingPaymentData, status: value })
+                    setEditingPaymentData({
+                      ...editingPaymentData,
+                      status: value,
+                    })
                   }
                 >
-                  <SelectTrigger id="edit-status"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectTrigger id="edit-status">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="paid">Paid</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
@@ -1114,27 +1659,91 @@ export default function DonorsPage() {
                 <FieldLabel htmlFor="edit-notes">Notes</FieldLabel>
                 <Input
                   id="edit-notes"
-                  value={editingPaymentData.notes}
-                  onChange={(e) => setEditingPaymentData({ ...editingPaymentData, notes: e.target.value })}
                   placeholder="Optional notes"
+                  value={editingPaymentData.notes}
+                  onChange={(e) =>
+                    setEditingPaymentData({
+                      ...editingPaymentData,
+                      notes: e.target.value,
+                    })
+                  }
                 />
               </Field>
               <div className="flex gap-3 pt-4">
-                <Button onClick={handlePaymentEditSubmit} className="flex-1" disabled={savingPayment}>
-                  {savingPayment ? "Updating..." : "Update Payment"}
+                <Button
+                  onClick={handlePaymentEditSubmit}
+                  disabled={savingPayment}
+                  className="flex-1"
+                >
+                  {savingPayment ? "Saving..." : "Update Payment"}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => {
-                    setIsEditPaymentOpen(false)
-                    setEditingPaymentId(null)
-                  }}
+                  onClick={() => setIsEditPaymentOpen(false)}
                 >
                   Cancel
                 </Button>
               </div>
             </FieldGroup>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* PASSWORD VERIFICATION MODAL */}
+      <Sheet open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
+        <SheetContent className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="text-lg sm:text-xl">Confirm Password</SheetTitle>
+            <SheetDescription className="text-xs sm:text-sm">
+              Enter your password to confirm this action
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 sm:mt-6 space-y-4">
+            {passwordError && (
+              <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">
+                {passwordError}
+              </div>
+            )}
+            <Field>
+              <FieldLabel htmlFor="password">Password</FieldLabel>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !verifyingPassword) {
+                    handleVerifyPassword()
+                  }
+                }}
+                disabled={verifyingPassword}
+              />
+            </Field>
+            <div className="flex gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsPasswordModalOpen(false)
+                  setPasswordInput("")
+                  setPasswordError("")
+                  setPendingAction(null)
+                }}
+                disabled={verifyingPassword}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleVerifyPassword}
+                disabled={verifyingPassword}
+                className="flex-1"
+              >
+                {verifyingPassword ? "Verifying..." : "Confirm"}
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>

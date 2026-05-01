@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { connectDB } from "@/src/lib/mongodb"
 import { Donor, Expenditure, Payment } from "@/src/models"
 import { MONTH_NAMES } from "@/src/lib/waqf-utils"
@@ -12,12 +12,32 @@ function compareYearMonth(a: { year: number; month: number }, b: { year: number;
   return a.month - b.month
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     await connectDB()
     const now = new Date()
     const currentMonth = now.getMonth() + 1
     const currentYear = now.getFullYear()
+
+    // Get date range filter parameters
+    const searchParams = new URL(req.url).searchParams
+    const fromDateStr = searchParams.get("fromDate")
+    const toDateStr = searchParams.get("toDate")
+
+    let fromDate: Date | null = null
+    let toDate: Date | null = null
+    const isFiltered = fromDateStr && toDateStr
+
+    if (isFiltered) {
+      try {
+        fromDate = new Date(fromDateStr!)
+        toDate = new Date(toDateStr!)
+        // Set toDate to end of day
+        toDate.setHours(23, 59, 59, 999)
+      } catch {
+        // Invalid date format, proceed without filter
+      }
+    }
 
     const [totalDonors, activeDonors, inactiveDonors] = await Promise.all([
       Donor.countDocuments(),
@@ -25,32 +45,49 @@ export async function GET() {
       Donor.countDocuments({ status: "inactive" }),
     ])
 
-    const currentMonthPayments = await Payment.find({
-      month: currentMonth,
-      year: currentYear,
-      status: "paid",
-    })
+    // Build payment query filter
+    const paymentQueryFilter: any = { status: "paid" }
+    if (fromDate && toDate) {
+      paymentQueryFilter.paymentDate = { $gte: fromDate, $lte: toDate }
+    }
+
+    const paymentsForStats = await Payment.find(paymentQueryFilter)
       .populate("donor", "name donorId")
       .sort({ paymentDate: -1 })
       .lean()
 
-    const recentPayments = await Payment.find({ status: "paid" })
-      .populate("donor", "name donorId")
-      .sort({ paymentDate: -1 })
-      .limit(10)
-      .lean()
+    const recentPayments = paymentsForStats.slice(0, 10)
 
-    const currentMonthCollected = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0)
-    const currentMonthTarget = activeDonors * 1000
-    const currentMonthPending = Math.max(0, currentMonthTarget - currentMonthCollected)
-    const collectionRate = currentMonthTarget > 0 ? (currentMonthCollected / currentMonthTarget) * 100 : 0
+    // Calculate collected amount based on filter
+    const collectedAmount = paymentsForStats.reduce((sum, p) => sum + p.amount, 0)
+    
+    // For current month calculations, only use if no date filter
+    let currentMonthCollected = 0
+    let currentMonthTarget = 0
+    let currentMonthPending = 0
+    
+    if (!isFiltered) {
+      const currentMonthPayments = paymentsForStats.filter(
+        p => p.month === currentMonth && p.year === currentYear
+      )
+      currentMonthCollected = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0)
+      currentMonthTarget = activeDonors * 1000
+      currentMonthPending = Math.max(0, currentMonthTarget - currentMonthCollected)
+    }
+
+    // Build expenditure query filter
+    const expenditureQueryFilter: any = {}
+    if (fromDate && toDate) {
+      expenditureQueryFilter.date = { $gte: fromDate, $lte: toDate }
+    }
 
     const allPaidAgg = await Payment.aggregate([
-      { $match: { status: "paid" } },
+      { $match: paymentQueryFilter },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ])
 
     const allExpenditureAgg = await Expenditure.aggregate([
+      { $match: expenditureQueryFilter },
       {
         $group: {
           _id: null,
@@ -73,27 +110,33 @@ export async function GET() {
     const allTimeReceived = allExpenditureAgg[0]?.totalReceived || 0
     const allTimeBalance = allTimeCollected + allTimeReceived - allTimeExpenditure
 
-    const ytdCollectedAgg = await Payment.aggregate([
-      { $match: { year: currentYear, status: "paid" } },
-      { $match: { month: { $lte: currentMonth } } },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ])
+    // YTD calculations only for unfiltered view
+    let yearToDateCollected = allTimeCollected
+    let yearToDateExpenditure = allTimeExpenditure
+    let yearToDateReceived = allTimeReceived
 
-    const ytdExpenditureAgg = await Expenditure.aggregate([
-      {
-        $match: {
-          date: {
-            $gte: new Date(currentYear, 0, 1),
-            $lte: now,
+    if (!isFiltered) {
+      const ytdCollectedAgg = await Payment.aggregate([
+        { $match: { year: currentYear, status: "paid" } },
+        { $match: { month: { $lte: currentMonth } } },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ])
+
+      const ytdExpenditureAgg = await Expenditure.aggregate([
+        {
+          $match: {
+            date: {
+              $gte: new Date(currentYear, 0, 1),
+              $lte: now,
+            },
           },
         },
-      },
-      {
-        $group: {
-          _id: null,
+        {
+          $group: {
+            _id: null,
           totalPaid: {
             $sum: {
-              $cond: [{ $eq: [{ $ifNull: ["$mode", "pay"] }, "pay"] }, "$amount", 0],
+              $cond: [{ $eq: [{ $ifNull: ["$mode", "pay"] }, "paid"] }, "$amount", 0],
             },
           },
           totalReceived: {
@@ -105,9 +148,10 @@ export async function GET() {
       },
     ])
 
-    const yearToDateCollected = ytdCollectedAgg[0]?.total || 0
-    const yearToDateExpenditure = ytdExpenditureAgg[0]?.totalPaid || 0
-    const yearToDateReceived = ytdExpenditureAgg[0]?.totalReceived || 0
+      yearToDateCollected = ytdCollectedAgg[0]?.total || 0
+      yearToDateExpenditure = ytdExpenditureAgg[0]?.totalPaid || 0
+      yearToDateReceived = ytdExpenditureAgg[0]?.totalReceived || 0
+    }
 
     const [paymentMonthlyAgg, expenditureMonthlyAgg] = await Promise.all([
       Payment.aggregate([
@@ -235,7 +279,6 @@ export async function GET() {
       currentMonthCollected,
       currentMonthPending,
       currentMonthTarget,
-      collectionRate,
       yearToDateCollected,
       yearToDateExpenditure,
       yearToDateReceived,
