@@ -138,7 +138,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
           ...(notes !== undefined ? { notes } : {}),
         },
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     )
 
     if (!donor) {

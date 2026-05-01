@@ -136,6 +136,17 @@ export default function ReportsPage() {
   const [paymentsDetailLoading, setPaymentsDetailLoading] = useState(false)
   const [paymentsDetailError, setPaymentsDetailError] = useState("")
 
+  // Payment Status Report state
+  const [statusReportMonth, setStatusReportMonth] = useState(String(new Date().getMonth() + 1))
+  const [statusReportYear, setStatusReportYear] = useState(String(new Date().getFullYear()))
+  const [statusReportFromDate, setStatusReportFromDate] = useState("")
+  const [statusReportToDate, setStatusReportToDate] = useState("")
+  const [statusReportShowPending, setStatusReportShowPending] = useState(true)
+  const [statusReportShowPaid, setStatusReportShowPaid] = useState(true)
+  const [statusReportData, setStatusReportData] = useState<PaymentReportRow[]>([])
+  const [statusReportLoading, setStatusReportLoading] = useState(false)
+  const [statusReportError, setStatusReportError] = useState("")
+
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -558,6 +569,214 @@ export default function ReportsPage() {
     printWindow.print()
   }
 
+  // Load Payment Status Report
+  const loadStatusReport = async () => {
+    setStatusReportLoading(true)
+    setStatusReportError("")
+
+    try {
+      const year = Number(statusReportYear)
+      const month = Number(statusReportMonth)
+      const firstDay = new Date(year, month - 1, 1).toISOString().slice(0, 10)
+      const lastDay = new Date(year, month, 0).toISOString().slice(0, 10)
+
+      // Load all active donors
+      const donorsRes = await fetch("/api/donors?limit=0&status=active")
+      const donorsData = await donorsRes.json()
+      if (!donorsRes.ok) {
+        throw new Error("Failed to load donors")
+      }
+      const activeDonors = Array.isArray(donorsData.donors) ? donorsData.donors : []
+
+      // Load payments for the selected month/year
+      const dateQuery = `?fromDate=${firstDay}&toDate=${lastDay}`
+      const res = await fetch(`/api/payments${dateQuery}`)
+      const data: PaymentReportResponse = await res.json()
+
+      if (!res.ok) {
+        throw new Error((data as { error?: string })?.error || "Failed to load report")
+      }
+
+      let existingPayments = Array.isArray(data.payments) ? data.payments : []
+
+      // Create a map of donors who have payments
+      const donorsWithPayments = new Set(existingPayments.map(p => p.donor._id))
+
+      // Create synthetic "pending" records for donors without payments
+      const pendingRecords: PaymentReportRow[] = activeDonors
+        .filter((donor: DonorOption) => !donorsWithPayments.has(donor._id))
+        .map((donor: DonorOption) => ({
+          _id: `pending-${donor._id}-${month}-${year}`,
+          paymentId: `pending-${donor._id}`,
+          amount: Number(donor.monthlyAmount || 1000),
+          month,
+          year,
+          paymentDate: new Date(year, month - 1, 1).toISOString(),
+          status: "pending" as const,
+          method: "pending",
+          donor: {
+            _id: donor._id,
+            donorId: donor.donorId,
+            name: donor.name,
+            phone: donor.phone,
+          },
+        }))
+
+      // Combine existing payments and pending records
+      let allRecords = [...existingPayments, ...pendingRecords]
+
+      // Filter by status
+      if (statusReportShowPending && !statusReportShowPaid) {
+        allRecords = allRecords.filter(p => p.status === "pending")
+      } else if (statusReportShowPaid && !statusReportShowPending) {
+        allRecords = allRecords.filter(p => p.status === "paid")
+      }
+      // If both checked, show all
+
+      setStatusReportData(allRecords)
+    } catch (error) {
+      setStatusReportData([])
+      setStatusReportError(error instanceof Error ? error.message : "Failed to load report")
+    } finally {
+      setStatusReportLoading(false)
+    }
+  }
+
+  // Print Payment Status Report
+  const handlePrintStatusReport = () => {
+    if (statusReportData.length === 0) {
+      alert("No data to print")
+      return
+    }
+
+    const printWindow = window.open("", "", "height=800,width=1000")
+    if (!printWindow) {
+      alert("Please allow pop-ups to print the report")
+      return
+    }
+
+    const rows = statusReportData.map((row, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(row.donor.donorId)}</td>
+        <td>${escapeHtml(row.donor.name)}</td>
+        <td style="text-align: center;">${row.month}/${row.year}</td>
+        <td style="text-align: right;">${formatPKR(row.amount)}</td>
+        <td style="text-align: center; color: ${row.status === "paid" ? "green" : "orange"}; font-weight: bold;">
+          ${row.status === "paid" ? "✓ PAID" : "⏳ PENDING"}
+        </td>
+        <td>${escapeHtml(row.method)}</td>
+      </tr>
+    `).join("")
+
+    const totalAmount = statusReportData.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+    const paidCount = statusReportData.filter(p => p.status === "paid").length
+    const pendingCount = statusReportData.filter(p => p.status === "pending").length
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Payment Status Report</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; color: #333; line-height: 1.4; margin: 10px; }
+            .print-header {
+              text-align: center;
+              border-bottom: 3px solid #000;
+              margin-bottom: 15px;
+              padding-bottom: 10px;
+            }
+            .print-header h1 { font-size: 18px; font-weight: bold; margin: 0; }
+            .print-header h2 { font-size: 14px; font-weight: bold; color: #555; margin: 5px 0 0 0; }
+            .print-header p { font-size: 11px; color: #666; margin: 3px 0; }
+            .report-info {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 12px;
+              font-size: 11px;
+            }
+            .report-info div { padding: 5px; background: #f5f5f5; flex: 1; margin-right: 10px; }
+            .report-info div:last-child { margin-right: 0; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+            table thead { background: #3d3d3d; color: white; }
+            table th, table td { border: 1px solid #999; padding: 6px; font-size: 10px; }
+            table th { font-weight: bold; text-align: left; }
+            table tbody tr:nth-child(even) { background: #f9f9f9; }
+            table tbody tr:nth-child(odd) { background: #fff; }
+            .summary {
+              border-top: 2px solid #000;
+              padding-top: 10px;
+              margin-top: 15px;
+            }
+            .summary-row {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 5px;
+              font-size: 11px;
+              font-weight: bold;
+            }
+            .footer {
+              margin-top: 20px;
+              border-top: 1px solid #ccc;
+              padding-top: 8px;
+              text-align: center;
+              font-size: 9px;
+              color: #888;
+            }
+            @media print {
+              body { margin: 0; padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-header">
+            <h1>${settings?.trustName || "Waqf Trust"}</h1>
+            <h2>Payment Status Report</h2>
+            <p>${new Date().toLocaleString()}</p>
+          </div>
+
+          <div class="report-info">
+            <div><strong>Report Type:</strong> ${statusReportShowPending && !statusReportShowPaid ? "Pending Payments Only" : statusReportShowPaid && !statusReportShowPending ? "Paid Payments Only" : "All Payments"}</div>
+            <div><strong>Total Records:</strong> ${statusReportData.length}</div>
+            <div><strong>Total Amount:</strong> ${formatPKR(totalAmount)}</div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Donor ID</th>
+                <th>Donor Name</th>
+                <th>Period</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Method</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+
+          <div class="summary">
+            <div class="summary-row"><span>Total Paid:</span> <span style="color: green;">${paidCount} record(s) - ${formatPKR(statusReportData.filter(p => p.status === "paid").reduce((sum, p) => sum + Number(p.amount || 0), 0))}</span></div>
+            <div class="summary-row"><span>Total Pending:</span> <span style="color: orange;">${pendingCount} record(s) - ${formatPKR(statusReportData.filter(p => p.status === "pending").reduce((sum, p) => sum + Number(p.amount || 0), 0))}</span></div>
+            <div class="summary-row" style="margin-top: 8px; border-top: 1px solid #ddd; padding-top: 8px;"><span>TOTAL:</span> <span>${statusReportData.length} record(s) - ${formatPKR(totalAmount)}</span></div>
+          </div>
+
+          <div class="footer">
+            <p style="margin-bottom: 3px;">Generated by Wasi Foundation Management System</p>
+            <p>© 2026 - All Rights Reserved</p>
+          </div>
+        </body>
+      </html>
+    `)
+
+    printWindow.document.close()
+    printWindow.print()
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -915,6 +1134,174 @@ export default function ReportsPage() {
                 })}
               </div>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Payment Status Report */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Payment Status Report (Paid/Pending)</CardTitle>
+          <CardDescription>Filter by date range or month, and check status to generate printable report</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {statusReportError ? <p className="text-sm text-destructive">{statusReportError}</p> : null}
+
+          <div className="space-y-3">
+            <div>
+              <p className="mb-3 text-sm font-medium">Filter Type: Date Range</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div>
+                  <label className="text-xs font-medium mb-1 block">From Date (Optional)</label>
+                  <Input
+                    type="date"
+                    value={statusReportFromDate}
+                    onChange={(e) => setStatusReportFromDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block">To Date (Optional)</label>
+                  <Input
+                    type="date"
+                    value={statusReportToDate}
+                    onChange={(e) => setStatusReportToDate(e.target.value)}
+                  />
+                </div>
+                {statusReportFromDate || statusReportToDate ? null : (
+                  <div>
+                    <p className="text-xs font-medium mb-1">Or Select Month/Year</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Select value={statusReportMonth} onValueChange={setStatusReportMonth}>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                            <SelectItem key={m} value={String(m)}>
+                              {new Intl.DateTimeFormat("en", { month: "short" }).format(
+                                new Date(2026, m - 1, 1)
+                              )}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={statusReportYear} onValueChange={setStatusReportYear}>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                            <SelectItem key={year} value={String(year)}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t pt-3">
+              <p className="mb-3 text-sm font-medium">Payment Status Filter</p>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={statusReportShowPaid}
+                    onChange={(e) => setStatusReportShowPaid(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">✓ Show Paid</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={statusReportShowPending}
+                    onChange={(e) => setStatusReportShowPending(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">⏳ Show Pending</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={loadStatusReport} disabled={statusReportLoading}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              {statusReportLoading ? "Loading..." : "Generate Report"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handlePrintStatusReport}
+              disabled={statusReportData.length === 0}
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Print Report
+            </Button>
+          </div>
+
+          {statusReportData.length > 0 && (
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="rounded bg-blue-50 p-2">
+                  <p className="text-xs text-muted-foreground">Total Records</p>
+                  <p className="text-lg font-bold">{statusReportData.length}</p>
+                </div>
+                <div className="rounded bg-green-50 p-2">
+                  <p className="text-xs text-muted-foreground">Paid</p>
+                  <p className="text-lg font-bold text-green-600">
+                    {statusReportData.filter(p => p.status === "paid").length}
+                  </p>
+                </div>
+                <div className="rounded bg-orange-50 p-2">
+                  <p className="text-xs text-muted-foreground">Pending</p>
+                  <p className="text-lg font-bold text-orange-600">
+                    {statusReportData.filter(p => p.status === "pending").length}
+                  </p>
+                </div>
+                <div className="rounded bg-purple-50 p-2">
+                  <p className="text-xs text-muted-foreground">Total Amount</p>
+                  <p className="text-sm font-bold text-purple-600">
+                    {formatPKR(statusReportData.reduce((sum, p) => sum + Number(p.amount || 0), 0))}
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 border-b">
+                    <tr>
+                      <th className="text-left p-2 text-xs">Donor ID</th>
+                      <th className="text-left p-2 text-xs">Name</th>
+                      <th className="text-center p-2 text-xs">Period</th>
+                      <th className="text-right p-2 text-xs">Amount</th>
+                      <th className="text-center p-2 text-xs">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {statusReportData.map((row, idx) => (
+                      <tr key={row._id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="p-2 text-xs">{row.donor.donorId}</td>
+                        <td className="p-2 text-xs">{row.donor.name}</td>
+                        <td className="text-center p-2 text-xs">{row.month}/{row.year}</td>
+                        <td className="text-right p-2 text-xs font-medium">{formatPKR(row.amount)}</td>
+                        <td className="text-center p-2">
+                          <Badge
+                            variant={row.status === "paid" ? "default" : "secondary"}
+                            className="text-xs"
+                          >
+                            {row.status === "paid" ? "✓ Paid" : "⏳ Pending"}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

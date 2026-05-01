@@ -44,7 +44,7 @@ export async function ensureAdminUserExists() {
           status: "Active",
         },
       },
-      { upsert: true, new: true, runValidators: true }
+      { upsert: true, returnDocument: 'after', runValidators: true }
     )
   }
 

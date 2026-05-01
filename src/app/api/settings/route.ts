@@ -52,7 +52,7 @@ export async function PUT(req: NextRequest) {
           logoUrl: body.logoUrl,
         },
       },
-      { new: true }
+      { returnDocument: 'after' }
     )
 
     return NextResponse.json({ settings })

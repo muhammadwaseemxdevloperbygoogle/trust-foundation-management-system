@@ -26,7 +26,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
           status: body.status,
         },
       },
-      { new: true }
+      { returnDocument: 'after' }
     )
 
     if (!payment) {

@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Building2, Users, DollarSign, Clock, Plus, FileText, MapPin } from "lucide-react"
+import { Building2, Users, DollarSign, Clock, Plus, FileText, MapPin, X } from "lucide-react"
 import { StatCard } from "@/components/stat-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { useAuth, hasPermission } from "@/lib/auth-context"
 import { formatPKR } from "@/src/lib/waqf-utils"
 import Link from "next/link"
@@ -65,6 +66,11 @@ export default function DashboardPage() {
   const [propertyCount, setPropertyCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  
+  // Date range filter state
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
+  const [isFiltered, setIsFiltered] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -72,8 +78,18 @@ export default function DashboardPage() {
     const loadDashboard = async () => {
       try {
         setLoading(true)
+        let statsUrl = "/api/dashboard/stats"
+        
+        // Add date range parameters if filtered
+        if (fromDate && toDate) {
+          const params = new URLSearchParams()
+          params.append("fromDate", fromDate)
+          params.append("toDate", toDate)
+          statsUrl += "?" + params.toString()
+        }
+
         const [statsRes, propertiesRes] = await Promise.all([
-          fetch("/api/dashboard/stats", { signal: controller.signal }),
+          fetch(statsUrl, { signal: controller.signal }),
           fetch("/api/properties", { signal: controller.signal }),
         ])
 
@@ -101,7 +117,7 @@ export default function DashboardPage() {
     return () => {
       controller.abort()
     }
-  }, [])
+  }, [fromDate, toDate])
 
   const activityItems = [
     ...(stats?.recentPayments || []).map((payment) => ({
@@ -131,6 +147,56 @@ export default function DashboardPage() {
           Welcome back, {user?.name}. Here&apos;s an overview of your Waqf properties.
         </p>
       </div>
+
+      {/* Date Range Filter */}
+      <Card className="bg-muted/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Filter by Date Range</CardTitle>
+          <CardDescription className="text-xs">Leave empty to view all-time data</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+            <div className="flex-1 min-w-0">
+              <label className="text-xs font-medium mb-1.5 block">From Date</label>
+              <Input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <label className="text-xs font-medium mb-1.5 block">To Date</label>
+              <Input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            {(fromDate || toDate) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setFromDate("")
+                  setToDate("")
+                  setIsFiltered(false)
+                }}
+                className="w-full sm:w-auto"
+              >
+                <X className="mr-2 h-4 w-4" />
+                Clear Filter
+              </Button>
+            )}
+            {fromDate && toDate && (
+              <div className="text-xs text-muted-foreground pt-2 sm:pt-0">
+                <Badge variant="secondary">Filtered</Badge>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stats grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

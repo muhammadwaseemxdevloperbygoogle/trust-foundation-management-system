@@ -26,7 +26,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
           receiptNumber: body.receiptNumber,
         },
       },
-      { new: true }
+      { returnDocument: 'after' }
     )
 
     if (!expenditure) {
