@@ -12,6 +12,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const { id } = await params
     const body = await req.json()
 
+    // Calculate paymentDate from year, month, and day if provided
+    let paymentDate = body.paymentDate
+    if (!paymentDate && body.year && body.month) {
+      const dayOfMonth = body.paymentDay || 1
+      paymentDate = new Date(body.year, body.month - 1, dayOfMonth)
+    }
+
     const payment = await Payment.findByIdAndUpdate(
       id,
       {
@@ -19,8 +26,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
           amount: body.amount,
           month: body.month,
           year: body.year,
+          paymentDay: body.paymentDay,
           method: body.method,
-          paymentDate: body.paymentDate,
+          paymentDate: paymentDate,
           receivedBy: body.receivedBy,
           notes: body.notes,
           status: body.status,

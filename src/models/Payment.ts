@@ -7,6 +7,7 @@ export interface PaymentDocument {
   amount: number
   month: number
   year: number
+  paymentDay?: number
   paymentDate: Date
   method: "cash" | "bank_transfer" | "easypaisa" | "jazzcash"
   status: "paid" | "pending" | "missed"
@@ -24,6 +25,7 @@ const paymentSchema = new Schema<PaymentDocument>(
     amount: { type: Number, default: 1000, min: 1 },
     month: { type: Number, required: true, min: 1, max: 12, index: true },
     year: { type: Number, required: true, index: true },
+    paymentDay: { type: Number, min: 1, max: 31 },
     paymentDate: { type: Date, default: Date.now },
     method: {
       type: String,
