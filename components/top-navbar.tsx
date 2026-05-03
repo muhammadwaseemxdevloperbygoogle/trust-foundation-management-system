@@ -12,9 +12,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/lib/auth-context"
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAppSettings } from "@/hooks/use-app-settings"
+import { useTheme } from "next-themes"
 
 interface TopNavbarProps {
   onMenuClick?: () => void
@@ -24,16 +25,15 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
   const { user, logout } = useAuth()
   const router = useRouter()
   const { applicationName, trustName, tagline } = useAppSettings()
-  const [isDark, setIsDark] = useState(false)
+  const { theme, setTheme, resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    const isDarkMode = document.documentElement.classList.contains("dark")
-    setIsDark(isDarkMode)
+    setMounted(true)
   }, [])
 
   const toggleDarkMode = () => {
-    document.documentElement.classList.toggle("dark")
-    setIsDark(!isDark)
+    setTheme(resolvedTheme === "dark" ? "light" : "dark")
   }
 
   const handleSignOut = () => {
@@ -78,8 +78,8 @@ export function TopNavbar({ onMenuClick }: TopNavbarProps) {
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         {/* Dark mode toggle */}
-        <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
-          {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        <Button variant="ghost" size="icon" onClick={toggleDarkMode} disabled={!mounted}>
+          {mounted && resolvedTheme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           <span className="sr-only">Toggle dark mode</span>
         </Button>
 

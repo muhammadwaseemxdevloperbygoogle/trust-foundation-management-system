@@ -66,6 +66,7 @@ type PaymentItem = {
   amount: number
   month: number
   year: number
+  paymentDay?: number
   method: "cash" | "bank_transfer" | "easypaisa" | "jazzcash"
   status: "paid" | "pending" | "missed"
   notes?: string
@@ -118,6 +119,7 @@ export default function DonorsPage() {
     donorId: "",
     month: String(today.getMonth() + 1),
     year: String(today.getFullYear()),
+    day: String(today.getDate()),
     amount: "1000",
     method: "cash" as "cash" | "bank_transfer" | "easypaisa" | "jazzcash",
     receivedBy: user?.name || "Admin",
@@ -136,6 +138,7 @@ export default function DonorsPage() {
     amount: "0",
     month: "1",
     year: String(new Date().getFullYear()),
+    day: String(new Date().getDate()),
     method: "cash" as "cash" | "bank_transfer" | "easypaisa" | "jazzcash",
     status: "paid" as "paid" | "pending" | "missed",
     receivedBy: "",
@@ -391,6 +394,7 @@ export default function DonorsPage() {
       amount: String(payment.amount),
       month: String(payment.month),
       year: String(payment.year),
+      day: String(payment.paymentDay || 1),
       method: payment.method,
       status: payment.status,
       receivedBy: "",
@@ -444,6 +448,7 @@ export default function DonorsPage() {
         amount: Number(editingPaymentData.amount),
         month: Number(editingPaymentData.month),
         year: Number(editingPaymentData.year),
+        paymentDay: editingPaymentData.day ? Number(editingPaymentData.day) : undefined,
         method: editingPaymentData.method,
         status: editingPaymentData.status,
         receivedBy: editingPaymentData.receivedBy || user?.name || "Admin",
@@ -464,6 +469,7 @@ export default function DonorsPage() {
       amount: "0",
       month: "1",
       year: String(new Date().getFullYear()),
+      day: String(new Date().getDate()),
       method: "cash",
       status: "paid",
       receivedBy: "",
@@ -501,6 +507,7 @@ export default function DonorsPage() {
         amount: Number(entryData.amount || 0),
         month: Number(entryData.month || 0),
         year: Number(entryData.year || 0),
+        paymentDay: entryData.day ? Number(entryData.day) : undefined,
         method: entryData.method,
         receivedBy: entryData.receivedBy || user?.name || "Admin",
         notes: entryData.notes,
@@ -542,45 +549,59 @@ export default function DonorsPage() {
       return
     }
 
-    setVerifyingPassword(true)
-    setPasswordError("")
-
-    const res = await fetch("/api/auth/verify-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: user?.id,
-        password: passwordInput,
-      }),
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      setPasswordError(data?.error || "Password verification failed")
-      setVerifyingPassword(false)
+    if (!user?.id) {
+      setPasswordError("User session is missing. Please sign in again.")
       return
     }
 
-    // Password verified, proceed with the pending action
-    setVerifyingPassword(false)
-    setIsPasswordModalOpen(false)
-    setPasswordInput("")
+    setVerifyingPassword(true)
     setPasswordError("")
 
-    if (!pendingAction) return
+    try {
+      const res = await fetch("/api/auth/verify-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          password: passwordInput,
+        }),
+      })
 
-    if (pendingAction.type === "delete_donor" && pendingAction.data) {
-      await handleConfirmedDeleteDonor(pendingAction.data as DonorItem)
-    } else if (pendingAction.type === "edit_donor" && pendingAction.data) {
-      handleConfirmedEditDonor(pendingAction.data as DonorItem)
-    } else if (pendingAction.type === "delete_payment" && pendingAction.data) {
-      await handleConfirmedDeletePayment(pendingAction.data as PaymentItem)
-    } else if (pendingAction.type === "edit_payment" && pendingAction.data) {
-      handleConfirmedEditPayment(pendingAction.data as PaymentItem)
+      let data: { error?: string } | null = null
+      try {
+        data = await res.json()
+      } catch {
+        data = null
+      }
+
+      if (!res.ok) {
+        setPasswordError(data?.error || "Password verification failed")
+        return
+      }
+
+      // Password verified, proceed with the pending action
+      setIsPasswordModalOpen(false)
+      setPasswordInput("")
+      setPasswordError("")
+
+      if (!pendingAction) return
+
+      if (pendingAction.type === "delete_donor" && pendingAction.data) {
+        await handleConfirmedDeleteDonor(pendingAction.data as DonorItem)
+      } else if (pendingAction.type === "edit_donor" && pendingAction.data) {
+        handleConfirmedEditDonor(pendingAction.data as DonorItem)
+      } else if (pendingAction.type === "delete_payment" && pendingAction.data) {
+        await handleConfirmedDeletePayment(pendingAction.data as PaymentItem)
+      } else if (pendingAction.type === "edit_payment" && pendingAction.data) {
+        handleConfirmedEditPayment(pendingAction.data as PaymentItem)
+      }
+
+      setPendingAction(null)
+    } catch {
+      setPasswordError("Unable to verify password. Please try again.")
+    } finally {
+      setVerifyingPassword(false)
     }
-
-    setPendingAction(null)
   }
 
   return (
@@ -687,7 +708,9 @@ export default function DonorsPage() {
                         filteredDonors.map((donor) => (
                           <TableRow key={donor._id} className="hover:bg-muted/50">
                             <TableCell className="font-medium text-primary">
-                              {donor.donorId}
+                              <Link href={`/dashboard/donors/${donor._id}`} className="hover:underline">
+                                {donor.donorId}
+                              </Link>
                             </TableCell>
                             <TableCell className="font-medium">
                               {donor.name}
@@ -759,9 +782,9 @@ export default function DonorsPage() {
                       >
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="font-bold text-primary">
+                            <Link href={`/dashboard/donors/${donor._id}`} className="font-bold text-primary hover:underline">
                               {donor.donorId}
-                            </p>
+                            </Link>
                             <p className="font-medium">{donor.name}</p>
                           </div>
                           <Badge
@@ -1139,7 +1162,24 @@ export default function DonorsPage() {
                   </Field>
 
                   <Field>
-                    <FieldLabel htmlFor="method">Payment Method *</FieldLabel>
+                    <FieldLabel htmlFor="day">Day (1-31)</FieldLabel>
+                    <Input
+                      id="day"
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={entryData.day}
+                      onChange={(e) =>
+                        setEntryData((prev) => ({
+                          ...prev,
+                          day: e.target.value,
+                        }))
+                      }
+                      placeholder="Day of payment"
+                    />
+                  </Field>
+
+                  <Field>
                     <Select
                       value={entryData.method}
                       onValueChange={(
@@ -1406,7 +1446,9 @@ export default function DonorsPage() {
                               </TableCell>
                               <TableCell>{donorName}</TableCell>
                               <TableCell className="text-sm">
-                                {payment.month}/{payment.year}
+                                {payment.paymentDay 
+                                  ? `${payment.month}/${payment.year} (Day ${payment.paymentDay})`
+                                  : `${payment.month}/${payment.year}`}
                               </TableCell>
                               <TableCell className="font-medium">
                                 {formatPKR(payment.amount)}
@@ -1506,7 +1548,9 @@ export default function DonorsPage() {
                           </div>
                           <div className="text-sm text-muted-foreground space-y-1">
                             <p>
-                              Period: {payment.month}/{payment.year}
+                              Period: {payment.paymentDay 
+                                ? `${payment.month}/${payment.year} (Day ${payment.paymentDay})`
+                                : `${payment.month}/${payment.year}`}
                             </p>
                             <p>Method: {payment.method}</p>
                           </div>
@@ -1606,6 +1650,22 @@ export default function DonorsPage() {
                     setEditingPaymentData({
                       ...editingPaymentData,
                       year: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="edit-day">Day (1-31)</FieldLabel>
+                <Input
+                  id="edit-day"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={editingPaymentData.day}
+                  onChange={(e) =>
+                    setEditingPaymentData({
+                      ...editingPaymentData,
+                      day: e.target.value,
                     })
                   }
                 />

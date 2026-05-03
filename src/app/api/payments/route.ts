@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
     const donorId = String(body?.donorId || "")
     const month = Number(body?.month)
     const year = Number(body?.year)
+    const paymentDay = body?.paymentDay ? Number(body.paymentDay) : undefined
     const requestedAmount = Number(body?.amount)
     const method = String(body?.method || "cash")
     const receivedBy = body?.receivedBy ? String(body.receivedBy) : undefined
@@ -110,6 +111,10 @@ export async function POST(req: NextRequest) {
 
     if (!Number.isInteger(year) || year < 2000 || year > 2100) {
       return NextResponse.json({ error: "Year is invalid" }, { status: 400 })
+    }
+
+    if (paymentDay !== undefined && (!Number.isInteger(paymentDay) || paymentDay < 1 || paymentDay > 31)) {
+      return NextResponse.json({ error: "Payment day must be between 1 and 31" }, { status: 400 })
     }
 
     if (!ALLOWED_METHODS.has(method)) {
@@ -187,20 +192,25 @@ export async function POST(req: NextRequest) {
     }
 
     const createdPayments = await Promise.all(
-      periods.map((period) =>
-        Payment.create({
+      periods.map((period) => {
+        // Calculate the actual payment date using the year, month, and optional day
+        const dayOfMonth = paymentDay || 1
+        const paymentDateObj = new Date(period.year, period.month - 1, dayOfMonth)
+        
+        return Payment.create({
           paymentNo: `WTF-PNO-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
           donor: donorId,
           amount: period.amount,
           month: period.month,
           year: period.year,
-          paymentDate: body.paymentDate || new Date(period.year, period.month - 1, 1),
+          paymentDay: paymentDay,
+          paymentDate: paymentDateObj,
           method,
           status: "paid",
           receivedBy,
           notes,
         })
-      )
+      })
     )
 
     await AuditLog.create({
@@ -209,7 +219,7 @@ export async function POST(req: NextRequest) {
       recordId: createdPayments[0].paymentId,
       description: splitModeEnabled
         ? `Split payment recorded for ${donor.name} (${createdPayments.length} months from ${periods[0].month}/${periods[0].year} to ${periods[periods.length - 1].month}/${periods[periods.length - 1].year})`
-        : `Payment recorded for ${donor.name} (${month}/${year})`,
+        : `Payment recorded for ${donor.name} (${month}/${year}${paymentDay ? ` on day ${paymentDay}` : ""})`,
       performedBy: receivedBy || "System",
     })
 
