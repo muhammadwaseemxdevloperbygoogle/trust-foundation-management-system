@@ -19,6 +19,9 @@ walfair foundation  imtiaz -  ویلفیئر فاؤنڈیشن ڈمیاں .csv
 # Local temporary files
 temp/
 
+# Interview preparation (local only)
+INTERVIEW_PREP/
+
 # Common ignores
 node_modules
 .next/

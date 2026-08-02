@@ -3,6 +3,20 @@ import { connectDB } from "@/src/lib/mongodb"
 import { Donor, Payment } from "@/src/models"
 import { getConsecutiveMissedMonths } from "@/src/lib/waqf-utils"
 
+async function getNextDonorId() {
+  const donors = await Donor.find({ donorId: { $regex: /^WTF-DNR-\d+$/ } })
+    .select("donorId")
+    .lean<{ donorId: string }[]>()
+
+  const maxSequence = donors.reduce((max, donor) => {
+    const match = donor.donorId.match(/(\d+)$/)
+    const sequence = Number(match?.[1] || 0)
+    return Number.isFinite(sequence) && sequence > max ? sequence : max
+  }, 0)
+
+  return `WTF-DNR-${String(maxSequence + 1).padStart(3, "0")}`
+}
+
 export async function GET(req: NextRequest) {
   try {
     await connectDB()
@@ -109,22 +123,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Phone number is required" }, { status: 400 })
     }
 
-    const donorCount = await Donor.countDocuments()
-    const donorId = `WTF-DNR-${String(donorCount + 1).padStart(3, "0")}`
+    let donor = null
 
-    const donor = await Donor.create({
-      donorId,
-      name: body.name,
-      phone: body.phone,
-      cnic: body.cnic,
-      email: body.email,
-      address: body.address,
-      city: body.city,
-      joinDate: body.joinDate || new Date(),
-      status: body.status || "active",
-      monthlyAmount: body.monthlyAmount || 1000,
-      notes: body.notes,
-    })
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const donorId = await getNextDonorId()
+
+      try {
+        donor = await Donor.create({
+          donorId,
+          name: body.name,
+          phone: body.phone,
+          cnic: body.cnic,
+          email: body.email,
+          address: body.address,
+          city: body.city,
+          joinDate: body.joinDate || new Date(),
+          status: body.status || "active",
+          monthlyAmount: body.monthlyAmount || 1000,
+          notes: body.notes,
+        })
+        break
+      } catch (error) {
+        if (typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000) {
+          continue
+        }
+
+        throw error
+      }
+    }
+
+    if (!donor) {
+      return NextResponse.json({ error: "Failed to create donor" }, { status: 500 })
+    }
 
     return NextResponse.json({ donor }, { status: 201 })
   } catch (error) {

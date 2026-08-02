@@ -549,59 +549,45 @@ export default function DonorsPage() {
       return
     }
 
-    if (!user?.id) {
-      setPasswordError("User session is missing. Please sign in again.")
-      return
-    }
-
     setVerifyingPassword(true)
     setPasswordError("")
 
-    try {
-      const res = await fetch("/api/auth/verify-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          password: passwordInput,
-        }),
-      })
+    const res = await fetch("/api/auth/verify-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user?.id,
+        password: passwordInput,
+      }),
+    })
 
-      let data: { error?: string } | null = null
-      try {
-        data = await res.json()
-      } catch {
-        data = null
-      }
+    const data = await res.json()
 
-      if (!res.ok) {
-        setPasswordError(data?.error || "Password verification failed")
-        return
-      }
-
-      // Password verified, proceed with the pending action
-      setIsPasswordModalOpen(false)
-      setPasswordInput("")
-      setPasswordError("")
-
-      if (!pendingAction) return
-
-      if (pendingAction.type === "delete_donor" && pendingAction.data) {
-        await handleConfirmedDeleteDonor(pendingAction.data as DonorItem)
-      } else if (pendingAction.type === "edit_donor" && pendingAction.data) {
-        handleConfirmedEditDonor(pendingAction.data as DonorItem)
-      } else if (pendingAction.type === "delete_payment" && pendingAction.data) {
-        await handleConfirmedDeletePayment(pendingAction.data as PaymentItem)
-      } else if (pendingAction.type === "edit_payment" && pendingAction.data) {
-        handleConfirmedEditPayment(pendingAction.data as PaymentItem)
-      }
-
-      setPendingAction(null)
-    } catch {
-      setPasswordError("Unable to verify password. Please try again.")
-    } finally {
+    if (!res.ok) {
+      setPasswordError(data?.error || "Password verification failed")
       setVerifyingPassword(false)
+      return
     }
+
+    // Password verified, proceed with the pending action
+    setVerifyingPassword(false)
+    setIsPasswordModalOpen(false)
+    setPasswordInput("")
+    setPasswordError("")
+
+    if (!pendingAction) return
+
+    if (pendingAction.type === "delete_donor" && pendingAction.data) {
+      await handleConfirmedDeleteDonor(pendingAction.data as DonorItem)
+    } else if (pendingAction.type === "edit_donor" && pendingAction.data) {
+      handleConfirmedEditDonor(pendingAction.data as DonorItem)
+    } else if (pendingAction.type === "delete_payment" && pendingAction.data) {
+      await handleConfirmedDeletePayment(pendingAction.data as PaymentItem)
+    } else if (pendingAction.type === "edit_payment" && pendingAction.data) {
+      handleConfirmedEditPayment(pendingAction.data as PaymentItem)
+    }
+
+    setPendingAction(null)
   }
 
   return (
@@ -708,9 +694,7 @@ export default function DonorsPage() {
                         filteredDonors.map((donor) => (
                           <TableRow key={donor._id} className="hover:bg-muted/50">
                             <TableCell className="font-medium text-primary">
-                              <Link href={`/dashboard/donors/${donor._id}`} className="hover:underline">
-                                {donor.donorId}
-                              </Link>
+                              {donor.donorId}
                             </TableCell>
                             <TableCell className="font-medium">
                               {donor.name}
@@ -782,9 +766,9 @@ export default function DonorsPage() {
                       >
                         <div className="flex items-start justify-between">
                           <div>
-                            <Link href={`/dashboard/donors/${donor._id}`} className="font-bold text-primary hover:underline">
+                            <p className="font-bold text-primary">
                               {donor.donorId}
-                            </Link>
+                            </p>
                             <p className="font-medium">{donor.name}</p>
                           </div>
                           <Badge
